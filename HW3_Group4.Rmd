@@ -1,0 +1,646 @@
+---
+title: "Data 621 - HW3"
+author: "Devin Teran, Atina Karim, Tom Hill, Amit Kapoor"
+date: "4/18/2021"
+output:
+  html_document:
+    highlight: pygments
+    #number_sections: yes
+    theme: flatly
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: TRUE
+    toc_depth: 2 
+---
+# Introduction
+
+In this homework assignment, you will explore, analyze and model a data set containing information on crime for various neighborhoods of a major city. Each record has a response variable indicating whether or not the crime rate is above the median crime rate (1) or not (0). Your objective is to build a binary logistic regression model on the training data set to predict whether the neighborhood will be at risk for high crime levels. You will provide classifications and probabilities for the evaluation data set using your binary logistic regression model.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+
+```{r loadData, include=FALSE}
+# Libraries
+library(dplyr)
+library(GGally)
+library(ggplot2)
+library(readr)
+library(reshape2)
+library(purrr)
+library(tidyr)
+library(corrplot)
+library(MASS)
+library(caret)
+library(e1071)
+library(ROCR)
+library(DataExplorer)
+library(pROC)
+library(kableExtra)
+```
+
+
+```{r read-csv}
+set.seed(2012)
+
+crime_training <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW3/crime-training-data_modified.csv')
+crime_eval <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW3/crime-evaluation-data_modified.csv')
+```
+
+# Data Exploration
+
+```{r, crime-df}
+head(crime_training)
+dim(crime_training)
+```
+Our dataset has 466 records.
+Explanation of features:
+
+* znn: proportion of residential land zoned for large lots (over 25000 square feet) (predictor variable)
+* indus: proportion of non-retail business acres per suburb (predictor variable)
+* chas: a dummy var. for whether the suburb borders the Charles River (1) or not (0) (predictor variable)
+* nox: nitrogen oxides concentration (parts per 10 million) (predictor variable)
+* rm: average number of rooms per dwelling (predictor variable)
+* age: proportion of owner-occupied units built prior to 1940 (predictor variable)
+* dis: weighted mean of distances to five Boston employment centers (predictor variable)
+* rad: index of accessibility to radial highways (predictor variable)
+* tax: full-value property-tax rate per $10,000 (predictor variable)
+* ptratio: pupil-teacher ratio by town (predictor variable)
+* lstat: lower status of the population (percent) (predictor variable)
+* medv: median value of owner-occupied homes in $1000s (predictor variable)
+* target: whether the crime rate is above the median crime rate (1) or not (0) (response variable)
+
+This also appears to be a public dataset available through Carnegie Mellon University <http://lib.stat.cmu.edu/datasets/boston>.  The original white paper was a 1978 study published in the _Journal of Environmental Economics and Management_, which was interested in the marginal price consumers would pay for improved air quality. The communities studied were in the greater Boston area.
+
+```{r, summary}
+summary(crime_training)
+```
+
+Looking at summary statistics, there are several proportions, like znn, indus, age, and lstat.  There is also a dummy variable, chas, for whether the community borders the Charles River. There are also no missing values.
+
+```{r, histograms}
+plot_histogram(crime_training)
+skewness(crime_training,na.rm=FALSE)
+```
+Several predictors seem highly skewed and thereby, good candidates for transformation.
+
+### Unique values and Modes
+
+Looking at feature distributions, no variable appears particularly normal. There are several variables with single overrepresented values, like indus, ptratio, rad, tax, and zn. In the case of zn, this appears to be for communities with no industrial zoning.
+
+The variables indus, ptratio, rad, tax, and zn all have pronounced modes. Lets take a closer look at the proportion of distinct values to see how to treat these variables
+
+
+```{r, unique-values}
+
+print('Indus unique values: ')
+length(unique(crime_training$indus))
+
+
+print('Ptratio unique values: ')
+length(unique(crime_training$ptratio))
+
+
+print('Rad unique values: ')
+length(unique(crime_training$rad))
+
+print('Tax unique values: ')
+length(unique(crime_training$tax))
+
+
+print('Zn unique values: ')
+length(unique(crime_training$zn))
+
+
+```
+
+Rad in particular appears to only have 9 unique values. The description of this variable mentions it is an index, so it may be preferable to consider it a categorical variable in the regression.
+
+
+```{r, modes}
+
+print('Indus most common values: ')
+sort(table(crime_training$indus), decreasing = TRUE)[1:10]
+
+print('Ptratio most common values: ')
+sort(table(crime_training$ptratio), decreasing = TRUE)[1:10]
+
+
+print('Rad most common values: ')
+sort(table(crime_training$rad), decreasing = TRUE)[1:10]
+
+print('Tax most common values: ')
+sort(table(crime_training$tax), decreasing = TRUE)[1:10]
+
+
+print('Zn most common values: ')
+sort(table(crime_training$zn), decreasing = TRUE)[1:10]
+
+
+```
+
+For 3 of the 5 variables, the mode is represented 121 times. Next, lets see if these variables coincide
+
+
+```{r, mode-overlap}
+
+crime_training %>% filter(indus == 18.1) %>% filter(ptratio == 20.2) %>% filter(tax == 666) %>% nrow()
+
+
+
+print('Proportion of cluster above median crime rate: ')
+
+crime_training %>% filter(indus == 18.1) %>% filter(ptratio == 20.2) %>% filter(tax == 666) %>% summarize(mean(target))
+
+100*round(121/nrow(crime_training),2)
+100*round(121/nrow(crime_training[crime_training$target == 1,]),2)
+```
+
+Counting the affected rows confirms that these modes have 100% overlap. This likely represents a cluster of values. And crucially, all 121 of these neighborhoods have above-median crime rates. This cluster represents 26% of all observations and over half of the high crime neighborhoods.
+
+
+
+```{r, rad-crime-level}
+
+
+
+table((crime_training$rad[crime_training$target ==1]))
+
+
+
+```
+Finally, here's a table looking at each index value for the rad variable. Of the 229 high crime neighborhoods, they are clearly not distributed evenly between the different index levels. For index values of 1 and 2, there are no high crime neighborhoods. It also doesn't appear that there's an increasing or descreasing pattern.
+
+
+
+```{r boxplot}
+ggplot(stack(crime_training), aes(x = ind, y = values)) +
+  geom_boxplot(color = "darkgreen", fill = "darkgreen", alpha = 0.3, notch = TRUE,
+               notchwidth = 0.5, outlier.colour = "red", outlier.fill = "red",
+               outlier.size = 3) + 
+  labs(title = "Boxplot of feature variables") + 
+  scale_y_log10()
+```
+
+The above notched boxplots of feature variables confirms the skewness shown in corresponsding histograms. The notch displays the confidence interval around the median.
+
+
+
+```{r, corrplot}
+corrplot(cor(crime_training))
+```
+
+Our target variable, crime rate > median, has several strong correlations with predictors. These include NO concentrations, age of dwellings, accessibility to highways, and property tax rate. It is negatively correlated with distance to metro employment centers.  There are also some variables that are strongly correlated with other predictors, including indus, nox, age, and dis. In particular,access to highways and property tax rate appear strongly correlated.
+
+
+### Outliers
+
+
+
+
+There appears to be a single outlier in our initial model, observation #338.  
+
+
+```{r, outlier}
+
+crime_training[338,]
+
+```
+
+Looking back to our look at the rad variable, this appears to be the single high crime area with a rad value of 3.
+
+
+# Data Preparation
+
+Without any transformations, it appears NO concentrations are a strong predictor of crime. Nearby highways are also correlated.
+
+## Zero Inflation
+
+From a glance at the histogram for predictor 'zn', it seems like the number 0 occurs more frequently than any other values. 
+
+
+```{r, zn-verification}
+count(crime_training,zn)
+```
+Upon further investigation, it appears that out of the 466 observations, 339 had residential land zoned for large lots. There are more zeros than expected for this variable and this can cause overdispersion. Therefore, we will transform this variable to a dichotomous variable indicating whether or not residential land was zoned for large lots.
+
+
+```{r, zn-conversion}
+crime_training$zn <- ifelse(crime_training$zn == 0, 0, 1) # 0 indicates that the neighborhood does not have residential land zoned for large lots and 1 indicates that it does
+count(crime_training,zn)
+```
+
+## Log Transformation
+
+The predictors rad and dis are also highly skewed (ignoring chas since this is a categorical variable). Thus we will log transform these variables.
+
+```{r, log-transformation}
+crime_training_transf <- crime_training
+crime_training_transf$rad <- log(crime_training_transf$rad+1)
+crime_training_transf$dis <- log(crime_training_transf$dis+1)
+skewness(crime_training_transf,na.rm=FALSE)
+```
+Skewness for the log transformed variables are now below 1.
+
+
+## Converting Categorical Variables to Factors
+
+
+Factor variables are categorical variables that could be either numeric or string. The important advantage of this conversion is that they can be used in statistical modeling where they will be implemented correctly, i.e., they will  be assigned the correct number of degrees of freedom. Also, storing string variables as factor variables is a more efficient use of memory.
+
+
+```{r, factors}
+crime_training_transf$chas = as.factor(crime_training_transf$chas)
+crime_training_transf$target = as.factor(crime_training_transf$target)
+```
+
+
+# Build Models
+
+## Model 1
+
+We will first start with generalized linear model (glm). glm is used to fit generalized linear models, specified by giving a symbolic description of the linear predictor and a description of the error distribution. `family` used here is binomial.
+
+
+```{r, first-model}
+# Model 1
+crime_glm <- glm(crime_training, family = 'binomial', formula = target ~.)
+summary(crime_glm)
+```
+
+
+```{r, outlier-plot}
+# plot model 1
+plot(crime_glm)
+```
+
+
+## Model 2
+
+The predictors rad and dis are also highly skewed (ignoring chas since this is a categorical variable). Thus we will log transform these variables and in model 2 we will use glm model with transformed data. This model uses all parameters with log transformations on **rad** and **dis**.
+
+
+```{r, transformed-model}
+# transformed model
+lm_transform <- glm(crime_training_transf, family = 'binomial', formula = target ~.)
+summary(lm_transform)
+
+```
+
+```{r, plot-model2}
+# plot model 2
+plot(lm_transform)
+```
+
+## Model 3
+
+This model removed the parameters **zn**, **chas**, **age**, **dis** and **ptratio**.  An additional variable was created using a combination of other variables **rm(tax + med)**.  
+
+```{r, glm-2}
+crime_glm2 <- glm(crime_training, formula = target~rm*(tax + medv) + nox + indus + +rm  + medv + tax + as.factor(rad), family = 'binomial')
+
+summary(crime_glm2)
+```
+
+
+```{r, plot-model3}
+# plot model 3
+plot(crime_glm2)
+```
+
+
+## Model 4
+
+In this model we transformed the variables **rad** and **dis** using log transformations and used backwards elimination to remove variables that are not predictive one at a time.  As we removed variables the AIC value decreased which indicates a better goodness of fit.
+
+```{r, model-4}
+crime_training_sw_transf <- crime_training
+crime_training_sw_transf$rad <- log(crime_training_sw_transf$rad+1)
+crime_training_sw_transf$dis <- log(crime_training_sw_transf$dis+1)
+
+crime_training_sw_transf$chas   = as.factor(crime_training_sw_transf$chas)
+crime_training_sw_transf$target = as.factor(crime_training_sw_transf$target)
+
+
+crime_glm4 <- glm(crime_training_sw_transf, formula = target ~ ., family = 'binomial')
+#summary(crime_glm4)
+crime_glm4 <- update(crime_glm4,target~. - indus) #remove indus
+#summary(crime_glm4)
+crime_glm4 <- update(crime_glm4,target~. - lstat) #remove lstat
+#summary(crime_glm4)
+crime_glm4 <- update(crime_glm4,target~. - chas) #remove chas
+#summary(crime_glm4)
+crime_glm4 <- update(crime_glm4,target~. - rm) #remove rm
+summary(crime_glm4)
+```
+
+
+```{r, plot-model4}
+# plot model 4
+plot(crime_glm4)
+```
+
+
+# Select Models
+
+```{r, performance-function}
+
+get_cv_performance <- function(data_frame, model, split = 0.8) {  ### input is dataframe for partitioning, model as generated by 'glm' function, by default 5-fold cross-validation
+  n <- ncol(data_frame) #number of columns in original dataframe
+  train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+  trainIndex <- createDataPartition(data_frame[,n], p=split, list=FALSE)
+  data_train <- data_frame[trainIndex,]
+  data_test <- data_frame[-trainIndex,]
+  
+
+  x_test <- data_test[,1:n] #explanatory variables
+  y_test <- data_test[,n]  #response variable
+
+  predictions <- predict(model, x_test, type = 'response')
+
+  
+  return(confusionMatrix(data = (as.factor(as.numeric(predictions>0.5))), reference = as.factor(y_test)))
+
+  
+  return(plot(roc(y_test, predictions),print.auc=TRUE))
+  
+}
+
+```
+
+
+```{r, roc-function}
+
+get_roc <- function(data_frame, model, split = 0.8) {  ### input is dataframe for partitioning, model as generated by 'glm' function
+  n <- ncol(data_frame) #number of columns in original dataframe
+  train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+  trainIndex <- createDataPartition(data_frame[,n], p=split, list=FALSE)
+  data_train <- data_frame[trainIndex,]
+  data_test <- data_frame[-trainIndex,]
+  
+
+  x_test <- data_test[,1:n] #explanatory variables
+  y_test <- data_test[,n]  #response variable
+
+  predictions <- predict(model, x_test, type = 'response')
+
+  return(plot(roc(y_test, predictions),print.auc=TRUE))
+  
+}
+
+```
+
+
+
+
+To measure model performance, a confusion matrix and ROC curve will be used. The confusion matrix will offer metrics about the predictive value of each logistical model. The ROC curve offers a graphical counterpart to these metrics. For both functions, the function performs a preliminary 5-way cross-validation as well.
+
+## Model 1  
+This model was created using all parameters. 
+
+
+```{r, get-perfs}
+
+model1_cv <- get_cv_performance(crime_training, crime_glm)
+model1_roc <- get_roc(crime_training, crime_glm)
+model1_cv
+model1_roc
+
+```
+
+## Model 2  
+This model uses all parameters with log transformations on **rad** and **dis**  
+
+
+```{r, get-perfs-lm-transformed}
+
+model2_cv <- get_cv_performance(crime_training_transf, lm_transform)
+model2_roc <- get_roc(crime_training_transf, lm_transform)
+model2_cv
+model2_roc
+```
+
+## Model 3   
+
+This model removed the parameters **zn**, **chas**, **age**, **dis** and **ptratio**.  An additional variable was created using a combination of other variables **rm(tax + med)**.  
+
+```{r, glm2-eval}
+
+model3_cv <- get_cv_performance(crime_training, crime_glm2)
+model3_roc <- get_roc(crime_training, crime_glm2)
+model3_cv
+model3_roc
+```
+
+## Model 4
+
+In this model we transformed the variables **rad** and **dis** using log transformations and used backwards elimination to remove variables that are not predictive one at a time.  As we removed variables the AIC value decreased which indicates a better goodness of fit.
+
+
+```{r, model-4-cv-roc}
+model4_cv <- get_cv_performance(crime_training_sw_transf, crime_glm4)
+model4_roc <- get_roc(crime_training_sw_transf, crime_glm4)
+model4_cv
+model4_roc
+```
+  
+## Conclusion  
+
+```{r, conclusion}
+Model_1 <- c("All variables",model1_roc$auc,model1_cv$byClass["Balanced Accuracy"],1-model1_cv$byClass["Balanced Accuracy"],model1_cv$byClass["Precision"],model1_cv$byClass["Sensitivity"],model1_cv$byClass["Specificity"],model1_cv$byClass["F1"])
+
+Model_2 <- c("Some log transformations",model2_roc$auc,model2_cv$byClass["Balanced Accuracy"],1-model2_cv$byClass["Balanced Accuracy"],model2_cv$byClass["Precision"],model2_cv$byClass["Sensitivity"],model2_cv$byClass["Specificity"],model2_cv$byClass["F1"])
+
+Model_3 <- c("Fewer variables, new created variable",model3_roc$auc,model3_cv$byClass["Balanced Accuracy"],1-model3_cv$byClass["Balanced Accuracy"],model3_cv$byClass["Precision"],model3_cv$byClass["Sensitivity"],model3_cv$byClass["Specificity"],model3_cv$byClass["F1"])
+
+Model_4 <- c("Backwards elmination, log transformations",model4_roc$auc,model4_cv$byClass["Balanced Accuracy"],1-model4_cv$byClass["Balanced Accuracy"],model4_cv$byClass["Precision"],model4_cv$byClass["Sensitivity"],model4_cv$byClass["Specificity"],model4_cv$byClass["F1"])
+
+results <- cbind(Model_1,Model_2,Model_3,Model_4)
+
+colnames(results) <- c('Model1', 'Model2', 'Model3','Model4')
+rownames(results) <- c('Description','AUC','accuracy','classification error rate','precision','sensitivity','specificty','F1 Score')
+
+results %>%
+  kable() %>%
+  kable_styling()
+```
+
+
+While all 4 models are great at predicting on our test data, Model 3 performs the best.  The AUC value for Model 3 is the highest. 
+The sensitivity, specificity, accuracy and error rate are the highest in Model 3 as well.
+
+Our final model shows the biggest predictors of whether a town has a crime rate above the median is the avg number of rooms in a house, the nitrogen oxide concentrations, and index of accessibility to radial highways. Here is the final model:  
+
+
+
+\begin{eqnarray} 
+target = 50.35025 - 18.00372rm - 0.25978tax -0.89499medv + 74.28452nox -0.15323indus - 0.93553rad2 + 21.68964rad3 + 24.10738rad4 + 21.0538rad5 +19.04056rad6 +27.13905rad7 + 27.10154rad8 + 64.83889rad24 + 0.04132rm:tax + 0.15300rm:medv 
+\end{eqnarray}
+
+
+## Predicting on the Evaluation Dataset
+
+We will use our final model on the evaluation dataset to predict whether or not, the crime rate is above the median crime rate in a neighborhood. The assigned threshold for the median is 0.5.
+
+```{r,eval}
+prediction <- predict(crime_glm2, newdata = crime_eval)
+prediction[prediction >= 0.5] <- 1
+prediction[prediction < 0.5] <- 0
+prediction = as.factor(prediction)
+prediction
+```
+
+
+
+
+# Code Appendix
+The code chunks below shows the R code called above throughout the analysis. They are being reproduced in the appendix for review and feedback.
+
+```{r appendix, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+
+
+
+```{r loadData}
+```
+
+
+```{r read-csv}
+```
+
+
+```{r, crime-df}
+```
+
+
+```{r, summary}
+```
+
+
+```{r, histograms}
+```
+
+
+```{r, unique-values}
+```
+
+
+```{r, modes}
+```
+
+
+```{r, mode-overlap}
+```
+
+
+```{r, rad-crime-level}
+```
+
+
+```{r boxplot}
+```
+
+
+```{r, corrplot}
+```
+
+
+```{r, outlier}
+```
+
+
+
+
+
+```{r, zn-verification}
+```
+
+
+```{r, zn-conversion}
+```
+
+
+```{r, log-transformation}
+```
+
+
+```{r, factors}
+```
+
+
+
+```{r, first-model}
+```
+
+
+```{r, outlier-plot}
+```
+
+
+```{r, transformed-model}
+```
+
+
+```{r, plot-model2}
+```
+
+
+```{r, glm-2}
+```
+
+
+```{r, plot-model3}
+```
+
+
+```{r, model-4}
+```
+
+
+```{r, plot-model4}
+```
+
+
+
+```{r, performance-function}
+```
+
+
+```{r, roc-function}
+```
+
+
+```{r, get-perfs}
+```
+
+
+```{r, get-perfs-lm-transformed}
+```
+
+
+
+
+
+```{r, glm2-eval}
+```
+
+
+
+
+
+```{r, model-4-cv-roc}
+```
+
+
+```{r, conclusion}
+```
+
+
+```{r,eval}
+```
+
+
