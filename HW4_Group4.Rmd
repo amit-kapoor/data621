@@ -1,0 +1,793 @@
+---
+title: "Data 621 - HW4"
+author: "Devin Teran, Atina Karim, Tom Hill, Amit Kapoor"
+date: "5/2/2021"
+output:
+  pdf_document:
+    toc: TRUE
+    toc_depth: 2 
+  html_document:
+    highlight: pygments
+    number_sections: no
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r libraries, include=FALSE}
+
+
+# Libraries
+
+
+library(stringr)
+library(tidyr)
+library(DataExplorer)        
+library(dplyr)
+library(visdat)
+library(pROC)
+library(mice)
+library(corrplot)
+library(MASS)
+library(caret)
+library(e1071)
+library(rbin)
+
+library(GGally)
+library(ggplot2)
+library(readr)
+library(reshape2)
+library(purrr)
+library(leaps)
+
+set.seed(2012)
+
+
+```
+
+
+```{r data}
+# training data
+insurance <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW4/insurance_training_data.csv', stringsAsFactors =  FALSE)
+# test data
+insurance_test <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW4/insurance_training_data.csv')
+```
+
+
+# Overview
+
+
+In this homework assignment, you will explore, analyze and model a data set containing approximately 8000 records representing a customer at an auto insurance company. Each record has two response variables. The
+first response variable, TARGET_FLAG, is a 1 or a 0. A “1” means that the person was in a car crash. A zero means that the person was not in a car crash. The second response variable is TARGET_AMT. This value is zero if the person did not crash their car. But if they did crash their car, this number will be a value greater than zero.  
+
+Your objective is to build multiple linear regression and binary logistic regression models on the training data to predict the probability that a person will crash their car and also the amount of money it will cost if the person does crash their car. You can only use the variables given to you (or variables that you derive from the variables provided). Below is a short description of the variables of interest in the data set:
+
+
+## Response Variables:
+
+|VARIABLE NAME|DEFINITION|THEORETICAL EFFECT|
+|-|-|--|
+|TARGET_FLAG|Was Car in a crash? 1=YES 0=NO|None|
+|TARGET_AMT|If car was in a crash, what was the cost|None|
+
+## Explanatory Variables:
+
+|VARIABLE NAME|DEFINITION|THEORETICAL EFFECT|
+|-|-|--|
+|AGE|Age of Driver|Very young people tend to be risky. Maybe very old people also.|
+|BLUEBOOK|Value of Vehicle|Unknown effect on probability of collision, but probably effect the payout if there is a crash|
+|CAR_AGE|Vehicle Age|Unknown effect on probability of collision, but probably effect the payout if there is a crash|
+|CAR_TYPE|Type of Car|Unknown effect on probability of collision, but probably effect the payout if there is a crash|
+|CAR_USE|Vehicle Use|Commercial vehicles are driven more, so might increase probability of collision|
+|CLM_FREQ|# Claims (Past 5 Years)|The more claims you filed in the past, the more you are likely to file in the future|
+|EDUCATION|Max Education Level|Unknown effect, but in theory more educated people tend to drive more safely|
+|HOMEKIDS|# Children at Home|Unknown effect|
+|HOME_VAL|Home Value|In theory, home owners tend to drive more responsibly|
+|INCOME|Income|In theory, rich people tend to get into fewer crashes|
+|JOB|Job Category|In theory, white collar jobs tend to be safer|
+|KIDSDRIV|# Driving Children|When teenagers drive your car, you are more likely to get into crashes|
+|MSTATUS|Marital Status|In theory, married people drive more safely|
+|MVR_PTS|Motor Vehicle Record Points|If you get lots of traffic tickets, you tend to get into more crashes|
+|OLDCLAIM|Total Claims (Past 5 Years)|If your total payout over the past five years was high, this suggests future payouts will be high|
+|PARENT1|Single Parent|Unknown effect|
+|RED_CAR|A Red Car|Urban legend says that red cars (especially red sports cars) are more risky. Is that true?|
+|REVOKED|License Revoked (Past 7 Years)|If your license was revoked in the past 7 years, you probably are a more risky driver.|
+|SEX|Gender|Urban legend says that women have less crashes then men. Is that true?|
+|TIF|Time in Force|People who have been customers for a long time are usually more safe.|
+|TRAVTIME|Distance to Work|Long drives to work usually suggest greater risk|
+|URBANICITY|Home/Work Area|Unknown|
+|YOJ|Years on Job|People who stay at a job for a long time are usually more safe|
+
+
+
+# Data Exploration
+
+```{r, before-fix}
+glimpse(insurance)
+```
+
+There are 8161 observation in the training dataset having 21 feature variables and 2 target variables.
+
+```{r,head}
+head(insurance)
+summary(insurance)
+```
+
+There are several recurring issues with some columns: all columns containing money amounts have incomptaible punctuation and characters. Also, categorical variables neeed to be changed to factors and their factor names edited for intelligibility.  
+
+
+
+```{r, numeric-vars}
+insurance_fix <- dplyr::select(insurance, -INDEX)
+
+insurance_fix$HOME_VAL <- substr(insurance_fix$HOME_VAL, 2, nchar(insurance_fix$HOME_VAL)) # remove the dollar sign 
+insurance_fix$HOME_VAL <- as.numeric(str_remove_all(insurance_fix$HOME_VAL, "[[:punct:]]")) # remove the comma and periods for money
+
+insurance_fix$BLUEBOOK<- substr(insurance_fix$BLUEBOOK , 2, nchar(insurance_fix$BLUEBOOK ))
+insurance_fix$BLUEBOOK<- as.numeric(str_remove_all(insurance_fix$BLUEBOOK,"[[:punct:]]"))
+
+insurance_fix$INCOME  <- substr(insurance_fix$INCOME, 2, nchar(insurance_fix$INCOME))
+insurance_fix$INCOME <- as.numeric(str_remove_all(insurance_fix$INCOME, "[[:punct:]]"))
+
+insurance_fix$OLDCLAIM <- substr(insurance_fix$OLDCLAIM, 2, nchar(insurance_fix$OLDCLAIM))
+insurance_fix$OLDCLAIM <- as.numeric(str_remove_all(insurance_fix$OLDCLAIM, "[[:punct:]]"))
+
+```
+
+
+```{r, categorical-vars}
+
+insurance_fix$MSTATUS = as.factor(str_remove(insurance_fix$MSTATUS, 'z_')) #several variables have a a recurring typo
+insurance_fix$PARENT1 = as.factor(str_remove(insurance_fix$PARENT1, 'z_'))
+insurance_fix$EDUCATION = str_replace(insurance_fix$EDUCATION, '<', 'Less than ') #change < to less than symbol to avoid confusion
+insurance_fix$SEX= as.factor(str_remove(insurance_fix$SEX, 'z_'))
+insurance_fix$EDUCATION = as.factor(str_remove(insurance_fix$EDUCATION, 'z_'))
+insurance_fix$JOB[insurance_fix$JOB == ""] <- 'Other Job' #recode blank spaces as 'Other Job'
+insurance_fix$JOB = as.factor(str_remove(insurance_fix$JOB, 'z_'))
+insurance_fix$CAR_USE = as.factor(str_remove(insurance_fix$CAR_USE, 'z_'))
+insurance_fix$CAR_TYPE = as.factor(str_remove(insurance_fix$CAR_TYPE, 'z_'))
+insurance_fix$URBANICITY = as.factor(str_remove(insurance_fix$URBANICITY, 'z_'))
+insurance_fix$REVOKED = as.factor(str_remove(insurance_fix$REVOKED, 'z_'))
+insurance_fix$RED_CAR = as.factor(str_remove(insurance_fix$RED_CAR, 'z_'))
+```
+
+
+```{r, after-fix}
+
+summary(insurance_fix)
+
+```
+
+
+The fixed dataframe now only includes columns that are numeric or factors.  Car age appears to have some values less than 1, including a negative values. These will be changed to the mode of 1.
+
+
+```{r, car-age}
+insurance_fix$CAR_AGE[insurance_fix$CAR_AGE <1] <- 1
+```
+
+
+## Categorical variables
+
+```{r, levels}
+cat_cols = c()
+j <- 1
+for (i in 4:ncol(insurance_fix)) {
+  if (class((insurance_fix[,i])) == 'factor') {
+      print(names(insurance_fix[i]))
+      print(levels(insurance_fix[,i]))
+      cat_cols[j]=names(insurance_fix[i])
+      j <- j+1
+  }
+
+}
+
+
+```
+
+Looking at categorical variables, most of the columns are binary.
+
+Below graphs shows the distribution of all categorical predictors.
+
+```{r, cat-bar, fig.length =20, fig.width=10}
+
+ins_fact <-  insurance_fix[cat_cols]
+ins_factm <- melt(ins_fact, measure.vars = cat_cols, variable.name = 'metric', value.name = 'value')
+
+ggplot(ins_factm, aes(x = value)) + 
+  geom_bar() + 
+  scale_fill_brewer(palette = "Set1") + 
+  facet_wrap( ~ metric, nrow = 5L, scales = 'free') + coord_flip()
+```
+
+
+
+## Numeric Variables
+
+Below 2 graphs shows the distribution of numeric variables. The red graphs are on normal scale and the green ones are on log10 scale. Many numeric variables feature the value of zero as a mode.
+
+```{r, histograms}
+plot_histogram(insurance_fix, geom_histogram_args = list("fill" = "tomato4"))
+
+```
+
+
+
+
+```{r, log10-hist}
+plot_histogram(insurance_fix, scale_x = "log10", geom_histogram_args = list("fill" = "springgreen4"))
+```
+
+## Missing Values
+
+
+Here are columns having missing values coded as NA:
+
+
+```{r,missing-val}
+# check columns having missing values 
+insurance_fix %>% summarise_all(funs(sum(is.na(.)))) %>% select_if(~any(.)>0)
+```
+
+
+```{r, plot-miss, fig.width=10, fig.length=10}
+plot_missing(insurance_fix)
+```
+
+
+
+
+```{r, missing-values}
+
+round(colSums(is.na(insurance_fix))/nrow(insurance_fix),3)
+
+vis_dat(insurance_fix %>% dplyr:: select(YOJ, INCOME, HOME_VAL, CAR_AGE))
+
+
+```
+
+Four variables have missing values, however there doesn't appear to be a pattern and it's safe to assume they're missing at random.
+
+## Correlation
+For the purposes of seeing correlation between variables, we're going to replace NA values with the median.
+```{r, corrplot}
+
+numer_data <- insurance_fix[,c('TARGET_AMT','AGE','YOJ','INCOME','HOME_VAL','TRAVTIME','BLUEBOOK','TIF','OLDCLAIM','CLM_FREQ','MVR_PTS','CAR_AGE')]
+
+AGE_MEDIAN <- median(filter(insurance_fix,AGE > 0)$AGE)
+INCOME_MEDIAN <- median(filter(insurance_fix,INCOME > 0)$INCOME)
+YOJ_MEDIAN <- median(filter(insurance_fix,YOJ > 0)$YOJ)
+HOME_VAL_MEDIAN <- median(filter(insurance_fix,HOME_VAL > 0)$HOME_VAL)
+CAR_AGE_MEDIAN <- median(filter(insurance_fix,CAR_AGE > 0)$CAR_AGE)
+
+
+numer_data <- numer_data %>% dplyr::mutate(AGE = replace_na(AGE,AGE_MEDIAN),
+                             INCOME = replace_na(INCOME,INCOME_MEDIAN),
+                             YOJ = replace_na(YOJ,YOJ_MEDIAN),
+                             HOME_VAL = replace_na(HOME_VAL,HOME_VAL_MEDIAN),
+                             CAR_AGE = replace_na(CAR_AGE,CAR_AGE_MEDIAN))
+corrplot(cor(numer_data),type="upper")
+
+```
+
+It's clear there are some positive correlations between the following variables:  
+* **Income** & **Home value**: 0.54  
+* **Income** & **Bluebook**: 0.42  
+* **Income** & **Car age**: 0.39  
+* **Claim Frequency** & **Old claims**: 0.50  
+* **Claim Frequence** & **MVR_PTS**:0.39    
+
+
+# Data Preparation
+
+
+## Removing TARGET_FLAG
+Our multiple linear regression model will be predicting the amount of money someone receives if they crash, so we will be removing the variable *TARGET_FLAG*
+
+
+```{r mlr-remove-target-flag}
+mlr_crash <- subset(filter(insurance_fix,TARGET_FLAG==1),select = -c(TARGET_FLAG))
+
+```
+
+## Handling Missing Data - Multiple Linear Regression
+
+For the multiple linear regression, we're going to assume that the NULL values will take the median value for the variable.
+```{r mlr-fix-nulls}
+mlr_crash_fix_na <- mlr_crash
+
+AGE_MEDIAN <- median(filter(mlr_crash_fix_na,AGE > 0)$AGE)
+INCOME_MEDIAN <- median(filter(mlr_crash_fix_na,INCOME > 0)$INCOME)
+YOJ_MEDIAN <- median(filter(mlr_crash_fix_na,YOJ > 0)$YOJ)
+HOME_VAL_MEDIAN <- median(filter(mlr_crash_fix_na,HOME_VAL > 0)$HOME_VAL)
+CAR_AGE_MEDIAN <- median(filter(mlr_crash_fix_na,CAR_AGE > 0)$CAR_AGE)
+
+mlr_crash_fix_na <- mlr_crash_fix_na %>% dplyr::mutate(AGE = replace_na(AGE,AGE_MEDIAN),
+                             INCOME = replace_na(INCOME,INCOME_MEDIAN),
+                             YOJ = replace_na(YOJ,YOJ_MEDIAN),
+                             HOME_VAL = replace_na(HOME_VAL,HOME_VAL_MEDIAN),
+                             CAR_AGE = replace_na(CAR_AGE,CAR_AGE_MEDIAN))
+```
+
+## Transforming Variables - Multiple Linear Regression
+There some variables that are not normally distributed so we're going to try using a log transformation later to see if that creates a better model.  For a few variables with values, 0, we added 1 to avoid negative infinity when taking the log of those variables.  This will not alter our modeling results significantly.
+
+
+```{r mlr-log-trans}
+mlr_crash_transf <- mlr_crash_fix_na
+mlr_crash_transf$AGE <- log(mlr_crash_transf$AGE)
+mlr_crash_transf$BLUEBOOK <- log(mlr_crash_transf$BLUEBOOK)
+mlr_crash_transf$CAR_AGE <- log(mlr_crash_transf$CAR_AGE + 1)
+mlr_crash_transf$HOME_VAL <- log(mlr_crash_transf$HOME_VAL + 1)
+mlr_crash_transf$INCOME <- log(mlr_crash_transf$INCOME + 1)
+mlr_crash_transf$OLDCLAIM <- log(mlr_crash_transf$OLDCLAIM + 1)
+mlr_crash_transf$TRAVTIME <- log(mlr_crash_transf$TRAVTIME)
+
+```
+
+## Zeroes in Home Value
+
+It seems from the histogram above, that the mode of the variable HOME_VAL is 0. Given that, the distribution seems normal if we remove 0s and that the difference between 0 and the number that appears next on the axis is significant, we are assuming that 0 indicates missing values for HOME_VAL. Therefore, we will convert 0s to NAs in HOME_VAL prior to imputing missing values for Binary Logistic Regression Model 3 below.
+
+```{r,insurance-fix 2}
+insurance_fix2 <- insurance_fix 
+insurance_fix2$HOME_VAL <-ifelse(insurance_fix2$HOME_VAL == 0, NA, insurance_fix2$HOME_VAL)
+```
+
+## Addressing Zeroes using Binning
+
+The histograms for several variables indicate that there many with an overrepresentation of 'zero' values. Some of the worst offenders include CAR_AGE, HOME_VAL, HOMEKIDS, KIDSDRIV, OLDCLAIM, TIF, and YOJ.  INCOME also has many 'zero' or very low values, and also similar to CAR_AGE and HOME_VAL because, omitting zero, the rest of the distributions appear to be skewed, approximately normal distributions. To avoid problems with interpretation, the 4th model will consider these continuous variables as categorical variables defined as a number range.
+
+```{r, binned-data}
+insurance_bins <- insurance_fix %>%
+  mutate(CAR_AGE_BIN=cut(CAR_AGE, breaks=c(-Inf, 1, 3, 12, Inf), labels=c("New","Like New","Average", 'Old'))) %>% #four level fator for car age
+  mutate(HOME_VAL_BIN=cut(HOME_VAL, breaks=c(-Inf, 0, 50000, 150000, 250000, Inf), labels=c("Zero", "$0-$50k", "$50k-$150k","$150k-$250k", 'Over $250k'))) %>% #bins for zero, plus four other price ranges
+  mutate(HAS_HOME_KIDS = as.factor(case_when(HOMEKIDS == 0 ~ 'No kids', HOMEKIDS > 0 ~ ('Has kids')))) %>% #binary variable for whether family has kids
+  mutate(HAS_KIDSDRIV = as.factor(case_when(KIDSDRIV == 0 ~ 'No kids driving', KIDSDRIV > 0 ~ 'Has kids driving'))) %>% #binary variable for whether family has kids driving
+  mutate(OLDCLAIM_BIN =cut(OLDCLAIM, breaks=c(-Inf, 0, 3000, 6000, 9000, Inf), labels=c("Zero","$0-$3k", "$3k-$6k", "$6k-$9k",'Over $9k'))) %>% #bins for zero, plus four other price ranges based on quartiles
+  mutate(TIF_BIN =cut(TIF, breaks=c(-Inf, 0, 1, 4, 7, Inf), labels=c("Zero","Less than 1 year", "1-4 years", "4-7 years",'Over 7 years'))) %>% #bins for zero, plus four other price ranges based on quartiles
+  mutate(YOJ_BIN =cut(YOJ, breaks=c(-Inf, 0, 10, 15, Inf), labels=c("Zero","Less than 10 years", 'Between 10-15 years', 'Over 15 years'))) %>% #bins for zero, plus three other categories based on quartiles
+  dplyr::select(-c(CAR_AGE, HOME_VAL, HOMEKIDS, KIDSDRIV, OLDCLAIM, TIF, YOJ)) #drop the binned features
+
+summary(insurance_bins)
+head(insurance_bins)
+```
+
+## Build Models
+
+## Model1
+
+The first model to consider includes all given variables and does not impute any values.
+
+
+```{r, first-model}
+
+
+insurance_logistic_model <- glm(insurance_fix, family = 'binomial', formula = TARGET_FLAG~.-TARGET_AMT)
+
+summary(insurance_logistic_model)
+
+```
+
+
+
+
+```{r, performance-function}
+get_cv_performance <- function(data_frame, model, split = 0.8) {  ### input is dataframe for partitioning, model as generated by 'glm' function, by default 5-fold cross-validation
+  n <- ncol(data_frame) #number of columns in original dataframe
+  train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+  trainIndex <- createDataPartition(data_frame[,n], p=split, list=FALSE)
+  data_train <- data_frame[trainIndex,]
+  data_test <- data_frame[-trainIndex,]
+  
+  x_test <- data_test[,2:n] #explanatory variables
+  y_test <- data_test[,1]  #response variable
+  predictions <- predict(model, x_test, type = 'response')
+  
+  return(confusionMatrix(data = (as.factor(as.numeric(predictions>0.5))), reference = as.factor(y_test)))
+  
+  return(plot(roc(y_test, predictions),print.auc=TRUE))
+  
+}
+```
+
+
+```{r, roc-function}
+get_roc <- function(data_frame, model, split = 0.8) {  ### input is dataframe for partitioning, model as generated by 'glm' function
+  n <- ncol(data_frame) #number of columns in original dataframe
+  train_control <- trainControl(method="repeatedcv", number=10, repeats=3)
+  trainIndex <- createDataPartition(data_frame[,n], p=split, list=FALSE)
+  data_train <- data_frame[trainIndex,]
+  data_test <- data_frame[-trainIndex,]
+  
+  x_test <- data_test[,2:n] #explanatory variables
+  y_test <- data_test[,1]  #response variable
+  predictions <- predict(model, x_test, type = 'response')
+  return(plot(roc(y_test, predictions),print.auc=TRUE))
+  
+}
+```
+
+
+
+
+```{r, logistic-model-performance}
+
+get_cv_performance(insurance_fix, insurance_logistic_model)
+get_roc(insurance_fix, insurance_logistic_model)
+
+
+```
+
+## Model2
+
+The second model imputes values using the 'mice' library using classification and regression trees. We will use glm.mids() that applies glm() to a multiply imputed data set.
+
+```{r, imputed-model2}
+
+insurance_impute <- mice(insurance_fix, method = 'cart', m = 1)
+
+imputed_lm <- glm.mids(data = insurance_impute, formula = TARGET_FLAG ~.-TARGET_AMT, family = 'binomial')
+
+
+imputed_lm
+
+```
+
+
+```{r, imputed-model-performance}
+
+get_cv_performance(insurance_fix, imputed_lm$analyses[[1]])
+get_roc(insurance_fix, imputed_lm$analyses[[1]])
+
+
+```
+
+## Model 3
+
+Now we will replicate the model above to see if our assumption about treating 0s in HOME_VAL as missing data, yields a better model fit. 
+
+```{r, imputed-model}
+
+insurance_impute2 <- mice(insurance_fix2, method = 'cart', m = 1)
+imputed_lm2 <- glm.mids(data = insurance_impute2, formula = TARGET_FLAG ~.-TARGET_AMT, family = 'binomial')
+imputed_lm2
+get_cv_performance(insurance_fix2, imputed_lm2$analyses[[1]])
+get_roc(insurance_fix2, imputed_lm2$analyses[[1]])
+
+```
+
+## Model 4
+
+```{r, binned-model}
+
+
+binned_lm <- glm(data = insurance_bins, formula = TARGET_FLAG ~.-TARGET_AMT, family = 'binomial')
+
+
+summary(binned_lm)
+
+```
+
+This and the consequent model considers all binned variables plus old variables. 
+
+```{r, binned-model-performance}
+
+get_cv_performance(insurance_bins, binned_lm)
+get_roc(insurance_bins, binned_lm)
+```
+
+## Model 5
+
+The next model provides a combination of imputation and binning.
+
+```{r, binned-and-imputed-model}
+
+insurance_binned_impute <- mice(insurance_bins, method = 'cart', m = 1)
+
+binned_imputed_lm <- glm.mids(data = insurance_binned_impute, formula = TARGET_FLAG ~.-TARGET_AMT, family = 'binomial')
+
+
+binned_imputed_lm
+
+```
+
+```{r, binned-and-imputed-model-performance}
+
+get_cv_performance(insurance_bins, binned_imputed_lm$analyses[[1]])
+get_roc(insurance_bins, binned_imputed_lm$analyses[[1]])
+
+```
+
+## Multiple Linear Regression
+
+### Model 1
+
+Below code shows output for preliminary regression modelling insurance payout given that a claim has been predicted. R-squared values are very low, but this assumes that a correct prediction from the binary logistic model has been made.
+
+```{r multiple-linear-regression-all-data}
+mlr<- lm(TARGET_AMT ~ . ,data=mlr_crash)
+summary(mlr)
+```
+The R^2 value is very low, around 4%, and many of the variables are not significant.
+
+
+### Model 2
+
+Using our log transformation on certain variables, the results are slightly worse. 
+
+```{r multiple-linear-regression-log-data-with-fixed-nas}
+mlr<- lm(TARGET_AMT ~ . ,data=mlr_crash_transf)
+summary(mlr)
+```
+
+
+### Model 3: Backwards Elimination
+Now let's use backwards elimination to remove some of variables that are not significant.
+
+```{r multiple-linear-regression-backward-elim-1}
+mlr1 <- lm(TARGET_AMT ~ . ,data=mlr_crash_transf)
+summary(mlr1)
+mlr2 <- update(mlr1,TARGET_AMT~. - OLDCLAIM) 
+summary(mlr2)
+mlr3 <- update(mlr2,TARGET_AMT~. - YOJ) 
+summary(mlr3)
+mlr4 <- update(mlr3,TARGET_AMT~. - URBANICITY) 
+summary(mlr4)
+mlr5 <- update(mlr4,TARGET_AMT~. - TRAVTIME) 
+summary(mlr5)
+mlr6 <- update(mlr5,TARGET_AMT~. - INCOME) 
+summary(mlr6)
+mlr7 <- update(mlr6,TARGET_AMT~. - CLM_FREQ) 
+summary(mlr7)
+mlr8 <- update(mlr7,TARGET_AMT~. - TIF) 
+summary(mlr8)
+mlr9 <- update(mlr8,TARGET_AMT~. - RED_CAR) 
+summary(mlr9)
+mlr10 <- update(mlr9,TARGET_AMT~. - PARENT1) 
+summary(mlr10)
+mlr11 <- update(mlr10,TARGET_AMT~. - KIDSDRIV) 
+summary(mlr11)
+mlr12 <- update(mlr11,TARGET_AMT~. - AGE) 
+summary(mlr12)
+mlr13 <- update(mlr12,TARGET_AMT~. - CAR_USE)
+summary(mlr13)
+mlr14 <- update(mlr13,TARGET_AMT~. - JOB) 
+summary(mlr14)
+mlr15 <- update(mlr14,TARGET_AMT~. - EDUCATION) 
+summary(mlr15)
+mlr16 <- update(mlr15,TARGET_AMT~. - CAR_TYPE) 
+summary(mlr16)
+mlr17 <- update(mlr16,TARGET_AMT~. - HOMEKIDS) 
+summary(mlr17)
+mlr18 <- update(mlr17,TARGET_AMT~. - CAR_AGE) 
+summary(mlr18)
+mlr19 <- update(mlr18,TARGET_AMT~. - HOME_VAL) 
+summary(mlr19)
+mlr20 <- update(mlr19,TARGET_AMT~. - MSTATUS) 
+summary(mlr20)
+mlr21 <- update(mlr20,TARGET_AMT~. - REVOKED) 
+summary(mlr21)
+mlr22 <- update(mlr21,TARGET_AMT~. - SEX) 
+summary(mlr22)
+```
+
+### Model 4: Forward Elimination
+
+Now let's use forward addition to add of variables one at a time.
+
+```{r multiple-linear-regression-forward-elim}
+mlr_fwd <- lm(TARGET_AMT ~ BLUEBOOK + MVR_PTS + SEX ,data= mlr_crash_transf)
+summary(mlr_fwd)
+
+mlr_fwd <- lm(TARGET_AMT ~ BLUEBOOK + MVR_PTS + SEX + MSTATUS ,data= mlr_crash_transf)
+summary(mlr_fwd)
+
+mlr_fwd <- lm(TARGET_AMT ~ BLUEBOOK + MVR_PTS + SEX + MSTATUS + HOME_VAL,data= mlr_crash_transf)
+summary(mlr_fwd)
+
+mlr_fwd <- lm(TARGET_AMT ~ BLUEBOOK + MVR_PTS + SEX + MSTATUS + HOME_VAL + REVOKED,data= mlr_crash_transf)
+summary(mlr_fwd)
+
+mlr_fwd <- lm(TARGET_AMT ~ BLUEBOOK + MVR_PTS + SEX + MSTATUS + HOME_VAL + REVOKED + CAR_AGE,data= mlr_crash_transf)
+summary(mlr_fwd)
+```
+
+
+### Model 5: Picking the best model using Leaps
+
+The function, *regsubsets()*, will go through iterations to find the best model using parameters = 1,2,3,4,... n. Here we see the model with 13 variables (represented by the red dot) had the lowest cp, which indicates the best model. The R^2 remains to be around 3.5% from about 13 variables and higher, which is extremely low.  
+
+
+```{r multiple-linear-regression-2}
+mlr_full <- regsubsets(TARGET_AMT ~ . ,data=mlr_crash, nvmax=NULL)
+mlr_summary<- summary(mlr_full)
+par(mfrow=c(2,2))
+plot(mlr_summary$cp,xlab = "# Variables", ylab = "cp - estimate of prediction error")
+points(13,mlr_summary$cp[13],pch=20,col="red")
+plot(mlr_summary$rsq,xlab = "# Variables", ylab = "R^2")
+
+```
+
+
+
+### Model 6: 
+Using the regsubsets function and our data that includes log transformations, we see it suggests a model with 7 variables is best look at the cp value.
+
+```{r multiple-linear-regression-3}
+mlr_full_transf <- regsubsets(TARGET_AMT ~ . ,data=mlr_crash_transf, nvmax=NULL)
+mlr_summary_transf <- summary(mlr_full_transf)
+
+par(mfrow=c(1,2))
+plot(mlr_summary_transf$cp,xlab = "# Variables", ylab = "cp - estimate of prediction error")
+points(7,mlr_summary_transf$cp[7],pch=20,col="red")
+plot(mlr_summary_transf$rsq,xlab = "# Variables", ylab = "R^2")
+```
+
+
+Using the transformed variables, we will choose the model that has 7 parameters since the R^2 value doesn't change by much as the number of parameters increases.  This gives us the following equation:  
+
+```{r mlr_coeff-3}
+coef(mlr_full,7)
+```
+
+```{r,model-6}
+model_6 <- lm(TARGET_AMT ~ MSTATUS +JOB+ BLUEBOOK + CAR_AGE+EDUCATION, data = mlr_crash_transf)
+summary(model_6)
+```
+### Model 7
+
+For this model, we used the log transformation of the response variable and a combination of predictors. Here is the model that yielded the best results:
+
+```{r, model-log}
+model_log <- lm(log(TARGET_AMT) ~ MSTATUS+SEX+ BLUEBOOK + CLM_FREQ + MVR_PTS+EDUCATION, data = mlr_crash_transf)
+summary(model_log)
+```
+
+
+# Select Models & Prediction
+
+## Binary Logistic Regression
+
+Based on the peformance diagnostics, model 4 or our binned model performs the best. AIC is 5816 and here are the other performance diagnostics:
+
+```{r, binned-model-performance2}
+
+get_cv_performance(insurance_bins, binned_lm)
+get_roc(insurance_bins, binned_lm)
+```
+## Multiple Linear Regression
+
+We will look at the diagnostic plot for the two models that had the highest adjusted r^2. Particularly model 1(with all variables minus TARGET_FLAG) and model 7 (log of response variable and a combination of predictors).
+
+### Model 1
+
+Model 1 had an adjusted r^2 of 0.02145 and is significant. Here is the diagnostic plot for model 1
+
+```{r, diagnostic-model1}
+res0 <- resid(mlr)
+plot(density(res0))
+qqnorm(res0)
+qqline(res0)
+ggplot(data = mlr, aes(x = .fitted, y = .resid)) +
+  geom_jitter() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+The density plot seems skewed and the qq plot deviates quite a bit.
+
+### Model 7
+
+Model 7 had an adjusted r^2 of 0.02158 and is significant
+
+```{r, diagnostic-model7}
+res0 <- resid(model_log)
+plot(density(res0))
+qqnorm(res0)
+qqline(res0)
+ggplot(data = model_log, aes(x = .fitted, y = .resid)) +
+  geom_jitter() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+The density and qqplot for model 7 seem somewhat normally distributed. The residual plot indicates homoscedasticity.
+
+### Prediction
+
+
+```{r, test,echo=FALSE}
+insurance_fix3 <- dplyr::select(insurance_test, -INDEX)
+
+insurance_fix3$HOME_VAL <- substr(insurance_fix3$HOME_VAL, 2, nchar(insurance_fix3$HOME_VAL)) # remove the dollar sign 
+insurance_fix3$HOME_VAL <- as.numeric(str_remove_all(insurance_fix3$HOME_VAL, "[[:punct:]]")) # remove the comma and periods for money
+
+insurance_fix3$BLUEBOOK<- substr(insurance_fix3$BLUEBOOK , 2, nchar(insurance_fix3$BLUEBOOK ))
+insurance_fix3$BLUEBOOK<- as.numeric(str_remove_all(insurance_fix3$BLUEBOOK,"[[:punct:]]"))
+
+insurance_fix3$INCOME  <- substr(insurance_fix3$INCOME, 2, nchar(insurance_fix3$INCOME))
+insurance_fix3$INCOME <- as.numeric(str_remove_all(insurance_fix3$INCOME, "[[:punct:]]"))
+
+insurance_fix3$OLDCLAIM <- substr(insurance_fix3$OLDCLAIM, 2, nchar(insurance_fix3$OLDCLAIM))
+insurance_fix3$OLDCLAIM <- as.numeric(str_remove_all(insurance_fix3$OLDCLAIM, "[[:punct:]]"))
+
+insurance_fix3$MSTATUS = as.factor(str_remove(insurance_fix3$MSTATUS, 'z_')) #several variables have a a recurring typo
+insurance_fix3$PARENT1 = as.factor(str_remove(insurance_fix3$PARENT1, 'z_'))
+insurance_fix3$EDUCATION = str_replace(insurance_fix3$EDUCATION, '<', 'Less than ') #change < to less than symbol to avoid confusion
+insurance_fix3$SEX= as.factor(str_remove(insurance_fix3$SEX, 'z_'))
+insurance_fix3$EDUCATION = as.factor(str_remove(insurance_fix3$EDUCATION, 'z_'))
+insurance_fix3$JOB[insurance_fix3$JOB == ""] <- 'Other Job' #recode blank spaces as 'Other Job'
+insurance_fix3$JOB = as.factor(str_remove(insurance_fix3$JOB, 'z_'))
+insurance_fix3$CAR_USE = as.factor(str_remove(insurance_fix3$CAR_USE, 'z_'))
+insurance_fix3$CAR_TYPE = as.factor(str_remove(insurance_fix3$CAR_TYPE, 'z_'))
+insurance_fix3$URBANICITY = as.factor(str_remove(insurance_fix3$URBANICITY, 'z_'))
+insurance_fix3$REVOKED = as.factor(str_remove(insurance_fix3$REVOKED, 'z_'))
+insurance_fix3$RED_CAR = as.factor(str_remove(insurance_fix3$RED_CAR, 'z_'))
+insurance_fix3$CAR_AGE[insurance_fix3$CAR_AGE <1] <- 1
+insurance_bins2 <- insurance_fix3 %>%
+  mutate(CAR_AGE_BIN=cut(CAR_AGE, breaks=c(-Inf, 1, 3, 12, Inf), labels=c("New","Like New","Average", 'Old'))) %>% #four level fator for car age
+  mutate(HOME_VAL_BIN=cut(HOME_VAL, breaks=c(-Inf, 0, 50000, 150000, 250000, Inf), labels=c("Zero", "$0-$50k", "$50k-$150k","$150k-$250k", 'Over $250k'))) %>% #bins for zero, plus four other price ranges
+  mutate(HAS_HOME_KIDS = as.factor(case_when(HOMEKIDS == 0 ~ 'No kids', HOMEKIDS > 0 ~ ('Has kids')))) %>% #binary variable for whether family has kids
+  mutate(HAS_KIDSDRIV = as.factor(case_when(KIDSDRIV == 0 ~ 'No kids driving', KIDSDRIV > 0 ~ 'Has kids driving'))) %>% #binary variable for whether family has kids driving
+  mutate(OLDCLAIM_BIN =cut(OLDCLAIM, breaks=c(-Inf, 0, 3000, 6000, 9000, Inf), labels=c("Zero","$0-$3k", "$3k-$6k", "$6k-$9k",'Over $9k'))) %>% #bins for zero, plus four other price ranges based on quartiles
+  mutate(TIF_BIN =cut(TIF, breaks=c(-Inf, 0, 1, 4, 7, Inf), labels=c("Zero","Less than 1 year", "1-4 years", "4-7 years",'Over 7 years'))) %>% #bins for zero, plus four other price ranges based on quartiles
+  mutate(YOJ_BIN =cut(YOJ, breaks=c(-Inf, 0, 10, 15, Inf), labels=c("Zero","Less than 10 years", 'Between 10-15 years', 'Over 15 years'))) %>% #bins for zero, plus three other categories based on quartiles
+  dplyr::select(-c(CAR_AGE, HOME_VAL, HOMEKIDS, KIDSDRIV, OLDCLAIM, TIF, YOJ)) #drop the binned features
+
+mlr_crash2 <- subset(filter(insurance_fix2,TARGET_FLAG==1),select = -c(TARGET_FLAG))
+mlr_crash_fix_na2 <- mlr_crash2
+AGE_MEDIAN <- median(filter(mlr_crash_fix_na2,AGE > 0)$AGE)
+INCOME_MEDIAN <- median(filter(mlr_crash_fix_na2,INCOME > 0)$INCOME)
+YOJ_MEDIAN <- median(filter(mlr_crash_fix_na2,YOJ > 0)$YOJ)
+HOME_VAL_MEDIAN <- median(filter(mlr_crash_fix_na2,HOME_VAL > 0)$HOME_VAL)
+CAR_AGE_MEDIAN <- median(filter(mlr_crash_fix_na2,CAR_AGE > 0)$CAR_AGE)
+
+mlr_crash_fix_na2 <- mlr_crash_fix_na2 %>% dplyr::mutate(AGE = replace_na(AGE,AGE_MEDIAN),
+                             INCOME = replace_na(INCOME,INCOME_MEDIAN),
+                             YOJ = replace_na(YOJ,YOJ_MEDIAN),
+                             HOME_VAL = replace_na(HOME_VAL,HOME_VAL_MEDIAN),
+                             CAR_AGE = replace_na(CAR_AGE,CAR_AGE_MEDIAN))
+mlr_crash_transf2 <- mlr_crash_fix_na2
+mlr_crash_transf2$AGE <- log(mlr_crash_transf2$AGE)
+mlr_crash_transf2$BLUEBOOK <- log(mlr_crash_transf2$BLUEBOOK)
+mlr_crash_transf2$CAR_AGE <- log(mlr_crash_transf2$CAR_AGE + 1)
+mlr_crash_transf2$HOME_VAL <- log(mlr_crash_transf2$HOME_VAL + 1)
+mlr_crash_transf2$INCOME <- log(mlr_crash_transf2$INCOME + 1)
+mlr_crash_transf2$OLDCLAIM <- log(mlr_crash_transf2$OLDCLAIM + 1)
+mlr_crash_transf2$TRAVTIME <- log(mlr_crash_transf2$TRAVTIME)
+
+```
+
+```{r,predict}
+predicted_amt <- predict(model_log, insurance_bins2)
+predicted_amt2 = predicted_amt
+predicted_amt2[] = 0
+
+predicted_flag = predict(binned_lm, insurance_bins2, type = "response")
+predicted_flag_bin = ifelse(predicted_flag > 0.5, 1, 0)
+
+for (i in 1:length(predicted_amt)) {
+  if(predicted_flag_bin[i] == 0 | is.na(predicted_flag_bin[i])) {
+    predicted_amt2[i] = 0
+  } else {
+    predicted_amt2[i] = predicted_amt[i]
+  }
+  
+}
+```
+
+```{r,predictions}
+table(predicted_flag_bin)
+table(predicted_amt2)
+```
+
+# Code Appendix
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
