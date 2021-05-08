@@ -1,0 +1,154 @@
+---
+title: "Data621 - Blog1"
+author: "Amit Kapoor"
+date: "3/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Principal Component Analysis
+
+Sometimes we have too many predictors and if we use all of them in our regression model, we would end up with issues and  explanation could be difficult due to collinearity. It could also cause prediction performance degradation by using too many predictors. Hence, it has been proven better to reduce dimension of the data to fetch meaningful, appropriate and valid results.
+
+Principal components analysis (PCA) is one of a family of techniques to deal with high-dimensional data by using high dimensional data and its variable's dependencies to represent it in a lower dimensional form without losing too much information. PCA is one of the simplest ways of doing dimensionality reduction. Here components are independent. This is a method of extracting information from higher dimensional data by representing it to lower dimension. It does this using a linear combination (weighted average) of a set of given variables and the created index variables are called principal components.
+
+
+# Steps to perform PCA
+
+* Standardize the data - make all the feature variables to follow same scale.
+* Find the covariance matrix of the features - covariance matrix has coveriance between the features.
+* Do perform eigen decompositon on the covariance matrix - decomposition gives the eigenvectors (principal components) and eigenvalues of the covariance matrix.
+* Select pricipal components - Sort based on the magnitude of their corresponding eigenvalues to select principal components
+* Find the number (m) of top principal components.
+* Make the projection matrix from the selected number of top principal components.
+* Find the new m-dimensional feature space.
+
+# R Application
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(psych)
+library(GGally)
+library(factoextra)
+library(data.table)
+```
+
+To demonstrate the PCA, we will consider Boston housing dataset that has below variables. This dataset has 506 records and total 14 variables.
+
+* CRIM: per capita crime rate by town
+* ZN: proportion of residential land zoned for lots over 25,000 sq.ft.
+* INDUS: proportion of non-retail business acres per town
+* CHAS: Charles River dummy variable (= 1 if tract bounds river; 0 otherwise)
+* NOX: nitric oxides concentration (parts per 10 million)
+* RM: average number of rooms per dwelling
+* AGE: proportion of owner-occupied units built prior to 1940
+* DIS: weighted distances to ﬁve Boston employment centers
+* RAD: index of accessibility to radial highways
+* TAX: full-value property-tax rate per $10,000
+* PTRATIO: pupil-teacher ratio by town 12. 
+* B: 1000(Bk−0.63)2 where Bk is the proportion of blacks by town 
+* LSTAT: % lower status of the population
+* MEDV: Median value of owner-occupied homes in $1000s
+
+
+```{r}
+# housing data
+housing <- fread("https://raw.githubusercontent.com/amit-kapoor/data621/main/blog1/housing.csv", header = FALSE)
+# assign column names
+colnames(housing) <- c("CRIM","ZN","INDUS","CHAS","NOX","RM","AGE","DIS","RAD","TAX","PTRATIO","B","LSTAT", "MEDV")
+head(housing)
+```
+
+
+```{r}
+# data dimesnion
+dim(housing)
+```
+
+
+
+```{r fig.width=10}
+# correlation
+ggcorr(housing, label = TRUE) + labs(title = "Correlation of variables")
+```
+
+We can see here that there are variables which are highly correlated,
+
+
+```{r}
+# describe data
+describe(housing)[-c(1)]
+```
+
+Next we will use prcomp function that performs a principal components analysis on the given data matrix and returns the results.
+
+```{r}
+pca_housing <- prcomp(housing, center = TRUE, scale. = TRUE)
+
+summary(pca_housing)
+```
+
+
+
+```{r}
+# $x - principal components
+dim(pca_housing$x)
+```
+
+
+```{r}
+# std. deviations
+pca_housing$scale
+```
+
+
+
+```{r}
+# means
+pca_housing$center
+```
+
+
+```{r}
+# first PCA component
+round(pca_housing$rot[,1],2)
+```
+
+
+Next we will see scree plot which is a line plot of the eigen values of principal components.
+
+```{r}
+#scree plot
+fviz_eig(pca_housing)
+```
+
+Finally we will fit the models first having full model using the original data and second using principal components (first 3) identified above.
+
+
+```{r}
+set.seed(317)
+# fit model using where we use all predictors
+housing.fullmodel <- lm(MEDV ~ ., data = housing)
+summary(housing.fullmodel)
+
+```
+
+
+
+```{r}
+set.seed(317)
+# fit model using first 3 Prinipal components
+housing.pcamodel <- lm(housing$MEDV ~ pca_housing$x[,1:3])
+summary(housing.pcamodel)
+```
+
+Comparing the full model with the PCA model, it is evident that PCA explains close to 83% of the variability with just three variables than the 13 significant variables from the full model which has $R^2$=0.73.
+
+
+# References
+
+* https://www.kaggle.com/kashettivir/the-boston-housing-dataset
+* https://www.youtube.com/watch?v=kw9R0nD69OU
+
