@@ -1,1 +1,117 @@
+---
+title: "Data621 - Blog2"
+author: "Amit Kapoor"
+date: "4/3/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Non Linear Regression
+
+Non-linear regression is a method to model a non-linear relationship between the dependent variable and independent variable(s). It is a regression technique in which the dependent variables are modeled as a non-linear function of one or more independent variables. Simple linear regression shows the relationship between two variables (X and y) with a straight line (y = aX + b), while nonlinear regression shows the relationship between the two variables in a nonlinear (or curved) relationship. In this blog we will cover 4 non linear regression models and their computing.
+
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+
+library(AppliedPredictiveModeling)
+library(mlbench)
+library(caret)
+```
+
+```{r, include=FALSE}
+set.seed(317)
+trainingData <- mlbench.friedman1(200, sd=1)
+
+## We convert the 'x' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+```
+
+
+
+## K-Nearest Neighbors
+
+K-nearest neighbors is the simplest non linear model which is widely used. KNN regression tries to predict the value of the output variable by using a local average. It simply predicts a new sample using the K-closest samples from the training set. It's algorithm assumes that similar things exist in close proximity. In other words, this approach simply predicts a new sample using the K-closest samples from the training set. Here we will use training using knn method on training data and find the besttuned k value.
+
+
+```{r}
+set.seed(317)
+knnfit <- train(trainingData$x,
+                trainingData$y,
+                method = "knn",
+                preProcess = c("center","scale"),
+                tuneLength = 5,
+                trControl = trainControl(method = "cv"))
+
+knnfit
+```
+
+
+## Support Vector Machines
+
+The objective of the support vector machine algorithm is to find a hyperplane in an N-dimensional space (N being the number of features) that classifies the data points. Hyperplanes are decision boundaries to classify the data points. Data points that falls on either side of the hyperplane can be qualified for different classes. Support vectors are data points that are closer to the hyperplane and effect the position and orientation of the hyperplane. Using these support vectors, we do maximize the margin of the classifier.
+
+```{r}
+set.seed(317)
+svmfit <- train(trainingData$x,
+                trainingData$y,
+                method = "svmRadial",
+                preProcess = c("center","scale"),
+                tuneLength = 5,
+                trControl = trainControl(method = "cv"))
+
+svmfit
+```
+
+## Multivariate Adaptive Regression Splines
+
+MARS creates a piecewise linear model which provides an intuitive stepping block into non-linearity after grasping the concept of multiple linear regression. MARS provided a convenient approach to capture the nonlinear relationships in the data by assessing cutpoints (knots) similar to step functions. The procedure assesses each data point for each predictor as a knot and creates a linear regression model with the candidate features.
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(317)
+marsGrid <- expand.grid(.degree=1:2, .nprune=1:5)
+marsfit <- train(trainingData$x,
+                trainingData$y,
+                method = "earth",
+                preProcess = c("center","scale"),
+                tuneGrid = marsGrid,
+                trControl = trainControl(method = "cv"))
+
+marsfit
+```
+
+## Neural Networks
+
+Neural Networks are nonlinear regression techniques inspired by theories about how the brain works. The outcome is modeled by an intermediary set of unobserved variables (hidden variables). These hidden units are linear combinations of the original predictors.
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(317)
+nnetGrid <- expand.grid(.decay=c(0,0.05,.1),
+                        .size=c(1:5),
+                        .bag=FALSE)
+
+nnetfit <- train(trainingData$x,
+                 trainingData$y,
+                 method = "avNNet", 
+                 tuneGrid = nnetGrid, 
+                 preProcess = c("center","scale"), 
+                 linout = TRUE,
+                 trace = FALSE,
+                 MaxNWts =10 * (ncol(trainingData$x)+1) +10+1,
+                 maxit=500)
+
+nnetfit
+```
+
+# References
+
+Applied Predictive Modeling by Max Kuhn and Kjell Johnson
+
+
 
