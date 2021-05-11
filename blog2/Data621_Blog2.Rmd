@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Non Linear Regression
 
-Non-linear regression is a method to model a non-linear relationship between the dependent variable and independent variable(s). It is a regression technique in which the dependent variables are modeled as a non-linear function of one or more independent variables. Simple linear regression shows the relationship between two variables (X and y) with a straight line (y = aX + b), while nonlinear regression shows the relationship between the two variables in a nonlinear (or curved) relationship. In this blog we will cover 4 non linear regression models and their computing.
+Non-linear regression is a method to model a non-linear relationship between the dependent variable and independent variable(s). It is a regression technique in which the dependent variables are modeled as a non-linear function of one or more independent variables. Simple linear regression shows the relationship between two variables (X and y) with a straight line (y = aX + b), while nonlinear regression shows the relationship between the two variables in a nonlinear (or curved) relationship. In this blog we will cover 4 non linear regression models and their computing. We will use the package `mlbench` that contains a function called `mlbench.friedman1` that simulates the non linear data.
 
 
 ```{r, include=FALSE, warning=FALSE, message=FALSE}
@@ -88,12 +88,14 @@ marsfit
 
 ## Neural Networks
 
-Neural Networks are nonlinear regression techniques inspired by theories about how the brain works. The outcome is modeled by an intermediary set of unobserved variables (hidden variables). These hidden units are linear combinations of the original predictors.
+Neural Networks are nonlinear regression techniques inspired by theories about how the brain works. The outcome is modeled by an intermediary set of unobserved variables (hidden variables). These hidden units are linear combinations of the original predictors. Neural networks contains node layers, having an input layer, one or more hidden layers, and an output layer. Each node connects to another and has an associated weight and threshold. If the output of any individual node is more than specified threshold value, that node gets activated and sends data to the next layer of the network else it is not passed to the next layer.
+
+Similar to earlier approach of choosing the number of hidden units and the amount of weight decay via resampling, here the train function is applied using method = "avNNet". avNNet Aggregate several neural network models.
 
 ```{r, warning=FALSE, message=FALSE}
 set.seed(317)
-nnetGrid <- expand.grid(.decay=c(0,0.05,.1),
-                        .size=c(1:5),
+nnetGrid <- expand.grid(.decay=c(0.05,.1),
+                        .size=2,
                         .bag=FALSE)
 
 nnetfit <- train(trainingData$x,
@@ -108,6 +110,8 @@ nnetfit <- train(trainingData$x,
 
 nnetfit
 ```
+
+
 
 # References
 

@@ -173,7 +173,7 @@ pre code {
 
 <div id="non-linear-regression" class="section level1">
 <h1>Non Linear Regression</h1>
-<p>Non-linear regression is a method to model a non-linear relationship between the dependent variable and independent variable(s). It is a regression technique in which the dependent variables are modeled as a non-linear function of one or more independent variables. Simple linear regression shows the relationship between two variables (X and y) with a straight line (y = aX + b), while nonlinear regression shows the relationship between the two variables in a nonlinear (or curved) relationship. In this blog we will cover 4 non linear regression models and their computing.</p>
+<p>Non-linear regression is a method to model a non-linear relationship between the dependent variable and independent variable(s). It is a regression technique in which the dependent variables are modeled as a non-linear function of one or more independent variables. Simple linear regression shows the relationship between two variables (X and y) with a straight line (y = aX + b), while nonlinear regression shows the relationship between the two variables in a nonlinear (or curved) relationship. In this blog we will cover 4 non linear regression models and their computing. We will use the package <code>mlbench</code> that contains a function called <code>mlbench.friedman1</code> that simulates the non linear data.</p>
 <div id="k-nearest-neighbors" class="section level2">
 <h2>K-Nearest Neighbors</h2>
 <p>K-nearest neighbors is the simplest non linear model which is widely used. KNN regression tries to predict the value of the output variable by using a local average. It simply predicts a new sample using the K-closest samples from the training set. It’s algorithm assumes that similar things exist in close proximity. In other words, this approach simply predicts a new sample using the K-closest samples from the training set. Here we will use training using knn method on training data and find the besttuned k value.</p>
@@ -279,10 +279,11 @@ marsfit</code></pre>
 </div>
 <div id="neural-networks" class="section level2">
 <h2>Neural Networks</h2>
-<p>Neural Networks are nonlinear regression techniques inspired by theories about how the brain works. The outcome is modeled by an intermediary set of unobserved variables (hidden variables). These hidden units are linear combinations of the original predictors.</p>
+<p>Neural Networks are nonlinear regression techniques inspired by theories about how the brain works. The outcome is modeled by an intermediary set of unobserved variables (hidden variables). These hidden units are linear combinations of the original predictors. Neural networks contains node layers, having an input layer, one or more hidden layers, and an output layer. Each node connects to another and has an associated weight and threshold. If the output of any individual node is more than specified threshold value, that node gets activated and sends data to the next layer of the network else it is not passed to the next layer.</p>
+<p>Similar to earlier approach of choosing the number of hidden units and the amount of weight decay via resampling, here the train function is applied using method = “avNNet”. avNNet Aggregate several neural network models.</p>
 <pre class="r"><code>set.seed(317)
-nnetGrid &lt;- expand.grid(.decay=c(0,0.05,.1),
-                        .size=c(1:5),
+nnetGrid &lt;- expand.grid(.decay=c(0.05,.1),
+                        .size=2,
                         .bag=FALSE)
 
 nnetfit &lt;- train(trainingData$x,
@@ -306,26 +307,15 @@ nnetfit</code></pre>
 ## Summary of sample sizes: 200, 200, 200, 200, 200, 200, ... 
 ## Resampling results across tuning parameters:
 ## 
-##   decay  size  RMSE      Rsquared   MAE     
-##   0.00   1     3.111098  0.5961150  2.362563
-##   0.00   2     2.973437  0.6267608  2.321443
-##   0.00   3     2.738814  0.6842496  2.095360
-##   0.00   4     2.976823  0.6521049  2.271537
-##   0.00   5     3.403919  0.5945687  2.570126
-##   0.05   1     3.011010  0.6212276  2.264200
-##   0.05   2     2.901704  0.6449434  2.237306
-##   0.05   3     2.737800  0.6862158  2.110959
-##   0.05   4     2.797178  0.6695710  2.169075
-##   0.05   5     2.914827  0.6472739  2.260785
-##   0.10   1     3.019025  0.6165016  2.265921
-##   0.10   2     2.937676  0.6386391  2.288432
-##   0.10   3     2.774069  0.6744224  2.159290
-##   0.10   4     2.725947  0.6843930  2.100606
-##   0.10   5     2.869615  0.6598589  2.211998
+##   decay  RMSE      Rsquared   MAE     
+##   0.05   2.932520  0.6384131  2.279432
+##   0.10   2.947952  0.6352441  2.280918
 ## 
-## Tuning parameter &#39;bag&#39; was held constant at a value of FALSE
+## Tuning parameter &#39;size&#39; was held constant at a value of 2
+## Tuning
+##  parameter &#39;bag&#39; was held constant at a value of FALSE
 ## RMSE was used to select the optimal model using the smallest value.
-## The final values used for the model were size = 4, decay = 0.1 and bag = FALSE.</code></pre>
+## The final values used for the model were size = 2, decay = 0.05 and bag = FALSE.</code></pre>
 </div>
 </div>
 <div id="references" class="section level1">
