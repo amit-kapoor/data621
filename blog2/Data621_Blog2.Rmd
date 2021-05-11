@@ -39,6 +39,7 @@ trainingData$x <- data.frame(trainingData$x)
 
 K-nearest neighbors is the simplest non linear model which is widely used. KNN regression tries to predict the value of the output variable by using a local average. It simply predicts a new sample using the K-closest samples from the training set. It's algorithm assumes that similar things exist in close proximity. In other words, this approach simply predicts a new sample using the K-closest samples from the training set. Here we will use training using knn method on training data and find the besttuned k value.
 
+The `caret` package provides `train` function sets up a grid of tuning parameters for a number of classification and regression routines, fits each model and calculates a resampling based performance measure. The `knnreg` function in the `caret` package fits the KNN regression model and `train` tunes the model over K.
 
 ```{r}
 set.seed(317)
@@ -57,6 +58,8 @@ knnfit
 
 The objective of the support vector machine algorithm is to find a hyperplane in an N-dimensional space (N being the number of features) that classifies the data points. Hyperplanes are decision boundaries to classify the data points. Data points that falls on either side of the hyperplane can be qualified for different classes. Support vectors are data points that are closer to the hyperplane and effect the position and orientation of the hyperplane. Using these support vectors, we do maximize the margin of the classifier.
 
+There are number of R packages available to implement SVM e.g.e1071 and kernlab. The train function can be used for SVM using methods as `svmRadial`, `svmLinear` and `svmPoly` that fit different kernels.
+
 ```{r}
 set.seed(317)
 svmfit <- train(trainingData$x,
@@ -72,6 +75,8 @@ svmfit
 ## Multivariate Adaptive Regression Splines
 
 MARS creates a piecewise linear model which provides an intuitive stepping block into non-linearity after grasping the concept of multiple linear regression. MARS provided a convenient approach to capture the nonlinear relationships in the data by assessing cutpoints (knots) similar to step functions. The procedure assesses each data point for each predictor as a knot and creates a linear regression model with the candidate features.
+
+To tune the MARS model using external resampling, the train function can be used using earth package.
 
 ```{r, warning=FALSE, message=FALSE}
 set.seed(317)

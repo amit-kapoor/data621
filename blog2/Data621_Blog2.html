@@ -177,6 +177,7 @@ pre code {
 <div id="k-nearest-neighbors" class="section level2">
 <h2>K-Nearest Neighbors</h2>
 <p>K-nearest neighbors is the simplest non linear model which is widely used. KNN regression tries to predict the value of the output variable by using a local average. It simply predicts a new sample using the K-closest samples from the training set. It’s algorithm assumes that similar things exist in close proximity. In other words, this approach simply predicts a new sample using the K-closest samples from the training set. Here we will use training using knn method on training data and find the besttuned k value.</p>
+<p>The <code>caret</code> package provides <code>train</code> function sets up a grid of tuning parameters for a number of classification and regression routines, fits each model and calculates a resampling based performance measure. The <code>knnreg</code> function in the <code>caret</code> package fits the KNN regression model and <code>train</code> tunes the model over K.</p>
 <pre class="r"><code>set.seed(317)
 knnfit &lt;- train(trainingData$x,
                 trainingData$y,
@@ -209,6 +210,7 @@ knnfit</code></pre>
 <div id="support-vector-machines" class="section level2">
 <h2>Support Vector Machines</h2>
 <p>The objective of the support vector machine algorithm is to find a hyperplane in an N-dimensional space (N being the number of features) that classifies the data points. Hyperplanes are decision boundaries to classify the data points. Data points that falls on either side of the hyperplane can be qualified for different classes. Support vectors are data points that are closer to the hyperplane and effect the position and orientation of the hyperplane. Using these support vectors, we do maximize the margin of the classifier.</p>
+<p>There are number of R packages available to implement SVM e.g.e1071 and kernlab. The train function can be used for SVM using methods as <code>svmRadial</code>, <code>svmLinear</code> and <code>svmPoly</code> that fit different kernels.</p>
 <pre class="r"><code>set.seed(317)
 svmfit &lt;- train(trainingData$x,
                 trainingData$y,
@@ -242,6 +244,7 @@ svmfit</code></pre>
 <div id="multivariate-adaptive-regression-splines" class="section level2">
 <h2>Multivariate Adaptive Regression Splines</h2>
 <p>MARS creates a piecewise linear model which provides an intuitive stepping block into non-linearity after grasping the concept of multiple linear regression. MARS provided a convenient approach to capture the nonlinear relationships in the data by assessing cutpoints (knots) similar to step functions. The procedure assesses each data point for each predictor as a knot and creates a linear regression model with the candidate features.</p>
+<p>To tune the MARS model using external resampling, the train function can be used using earth package.</p>
 <pre class="r"><code>set.seed(317)
 marsGrid &lt;- expand.grid(.degree=1:2, .nprune=1:5)
 marsfit &lt;- train(trainingData$x,
