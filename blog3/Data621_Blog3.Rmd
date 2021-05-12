@@ -1,1 +1,173 @@
+---
+title: "Data621 - Blog3"
+author: "Amit Kapoor"
+date: "4/3/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Regression Trees
+
+Tree-based models consist of one or more nested conditional statements for the predictors that partition the data. Within these partitions, a model is used to predict the outcome. In the tree models terminology, there are two splits of the data into three terminal nodes or leaves of the tree. To get a prediction for new data, we would follow the if-then statements defined by the tree using values of that sample’s predictors until we come to a terminal node. The model formula in the terminal node would be used to get the prediction.
+
+To demonstrate here various tree based models here, We will use the package `mlbench` that contains a function called `mlbench.friedman1` that simulates the non linear data.
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+
+library(AppliedPredictiveModeling)
+library(mlbench)
+library(caret)
+library(RWeka)
+```
+
+```{r, include=FALSE}
+set.seed(317)
+trainingData <- mlbench.friedman1(200, sd=1)
+
+## We convert the 'x' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+```
+
+
+
+## Single Trees
+
+Regression trees partition a data set into smaller groups and then fit a simple model for each subgroup. Basic regression trees partition the data into smaller groups that are more homogenous against the response. To achieve outcome consistency, regression trees determine the predictor to split on and value of the split, the depth or complexity of the tree and the prediction equation in the terminal nodes.
+
+`caret` package implements the `rpart` method with cp as the tuning parameter. `caret` by default prunes tree based models. `cp` is the parameter used by `rpart` to determine when to prune.
+
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(317)
+
+singletree.model <- train(x=trainingData$x,
+                          y=trainingData$y,
+                          method = "rpart",
+                          tuneLength = 5,
+                          trControl = trainControl(method = "cv"))
+
+singletree.model
+```
+
+
+## Model Trees
+
+One limitation of simple regression trees is that each terminal node uses the average of the training set outcomes in that node for prediction. As a consequence, these models may not do a good job predicting samples whose true outcomes are extremely high or low. The model tree approach differs from regression trees as the splitting criterion is different, the terminal nodes predict using a linear model and prediction is often a combination of the predictions from different models along the same path through the tree.
+
+To tune model trees model, the `train` function in the `caret` package has method = "M5" that evaluates model trees and the rule-based versions of the model along with smoothing and pruning.
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(317)
+mdltree.model <- train(x=trainingData$x, 
+                       y=trainingData$y, 
+                       method = "M5",
+                       trControl = trainControl(method = "cv"),
+                       control = Weka_control(M = 2))
+
+mdltree.model
+```
+
+
+
+
+## Bagged Trees
+
+
+```{r}
+
+bagCtrl <- bagControl(fit = ctreeBag$fit,
+                      predict = ctreeBag$pred,
+                      aggregate = ctreeBag$aggregate)
+
+bagg.model <- train(x=trainingData$x, 
+                    y=trainingData$y, 
+                    method="treebag", 
+                    tuneLength = 2,
+                    trControl = trainControl(method = "cv"),
+                    bagCtrl=bagCtrl)
+
+bagg.model
+```
+
+
+
+
+
+
+
+## Random Forests
+
+
+```{r}
+set.seed(317)
+
+randfrst.model <- train(x=trainingData$x,
+                        y=trainingData$y,
+                        method = "rf",
+                        tuneLength = 2,
+                        trControl = trainControl(method = "cv"))
+
+randfrst.model
+```
+
+
+
+## Boosting
+
+```{r}
+set.seed(317)
+
+# boosting regression trees via stochastic gradient boosting machines
+gbmGrid <- expand.grid(interaction.depth = seq(1, 2, by = 1), 
+                       n.trees = seq(100, 200, by = 50), 
+                       shrinkage = 0.1,
+                       n.minobsinnode = 5)
+
+gbm.model <- train(x=trainingData$x,
+                   y=trainingData$y,
+                   method = "gbm",
+                   tuneGrid = gbmGrid, 
+                   trControl = trainControl(method = "cv"),
+                   verbose = FALSE)
+
+gbm.model
+```
+
+
+## Cubist
+
+
+
+```{r}
+set.seed(317)
+
+cubist.model <- train(x=trainingData$x, 
+                      y=trainingData$y, 
+                      method = "cubist", 
+                      tuneLength = 5, 
+                      trControl = trainControl(method = "cv"))
+
+cubist.model
+```
+
+
+
+# References
+
+Applied Predictive Modeling by Max Kuhn and Kjell Johnson
+
+
+
+
+
+
+
+
 
