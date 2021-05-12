@@ -79,6 +79,9 @@ mdltree.model
 
 ## Bagged Trees
 
+Bagging is short for bootstrap aggregation. Bagging is a general approach that uses bootstrapping along with any regression model to construct an ensemble. Each model in the ensemble generates a prediction for a new sample and these, say m, predictions are averaged to give the bagged model’s prediction.
+
+The `train` function uses the method `treebag` along with `bagControl` to implement bagged trees.
 
 ```{r}
 
@@ -99,10 +102,12 @@ bagg.model
 
 
 
-
-
-
 ## Random Forests
+
+Random forest consists of a large number of individual decision trees that work as an ensemble. Each model in the ensemble is used to generate a prediction for a new sample and these predictions are then averaged to give the forest’s prediction. Since the algorithm randomly selects predictors at each split, tree correlation gets reduces as compared to bagging. In random forest algorithm, we first select the number of models to build and theen loop through this number and train a tree model. Once done then avearage the predictions to get overall prediction. In random forests, trees are created independently, each tree is created having maximum depth and each tree contributes equally in the final model.
+
+The `train` function has wrappers for tuning these models by specifying either method = "rf" or "cforest". Doing optimization of `mtry` parameter may result in a slight increase in performance. Also, `train` function could use standard resampling methods for estimating performance.
+
 
 
 ```{r}
@@ -121,6 +126,12 @@ randfrst.model
 
 ## Boosting
 
+Boosting algorithms are influenced by learning theory. Boosting algorithm seeks to improve the prediction power by training a sequence of weak models where each of them compensates the weaknesses of its predecessors. The trees in boosting are dependent on past trees, have minimum depth and do not contribute equally to the final model. It requires usto specify a weak model (e.g. regression, shallow decision trees etc) and then improves it.
+
+
+Similar to others, the train function can be used here too, to tune over different parameters. Here we define a tuning grid to tune over interaction depth, number of trees, and shrinkage. Next we train over this grid as follows.
+
+
 ```{r}
 set.seed(317)
 
@@ -138,23 +149,6 @@ gbm.model <- train(x=trainingData$x,
                    verbose = FALSE)
 
 gbm.model
-```
-
-
-## Cubist
-
-
-
-```{r}
-set.seed(317)
-
-cubist.model <- train(x=trainingData$x, 
-                      y=trainingData$y, 
-                      method = "cubist", 
-                      tuneLength = 5, 
-                      trControl = trainControl(method = "cv"))
-
-cubist.model
 ```
 
 

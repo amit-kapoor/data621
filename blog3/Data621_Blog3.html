@@ -246,6 +246,8 @@ mdltree.model</code></pre>
 </div>
 <div id="bagged-trees" class="section level2">
 <h2>Bagged Trees</h2>
+<p>Bagging is short for bootstrap aggregation. Bagging is a general approach that uses bootstrapping along with any regression model to construct an ensemble. Each model in the ensemble generates a prediction for a new sample and these, say m, predictions are averaged to give the bagged model’s prediction.</p>
+<p>The <code>train</code> function uses the method <code>treebag</code> along with <code>bagControl</code> to implement bagged trees.</p>
 <pre class="r"><code>bagCtrl &lt;- bagControl(fit = ctreeBag$fit,
                       predict = ctreeBag$pred,
                       aggregate = ctreeBag$aggregate)
@@ -273,6 +275,8 @@ bagg.model</code></pre>
 </div>
 <div id="random-forests" class="section level2">
 <h2>Random Forests</h2>
+<p>Random forest consists of a large number of individual decision trees that work as an ensemble. Each model in the ensemble is used to generate a prediction for a new sample and these predictions are then averaged to give the forest’s prediction. Since the algorithm randomly selects predictors at each split, tree correlation gets reduces as compared to bagging. In random forest algorithm, we first select the number of models to build and theen loop through this number and train a tree model. Once done then avearage the predictions to get overall prediction. In random forests, trees are created independently, each tree is created having maximum depth and each tree contributes equally in the final model.</p>
+<p>The <code>train</code> function has wrappers for tuning these models by specifying either method = “rf” or “cforest”. Doing optimization of <code>mtry</code> parameter may result in a slight increase in performance. Also, <code>train</code> function could use standard resampling methods for estimating performance.</p>
 <pre class="r"><code>set.seed(317)
 
 randfrst.model &lt;- train(x=trainingData$x,
@@ -301,6 +305,8 @@ randfrst.model</code></pre>
 </div>
 <div id="boosting" class="section level2">
 <h2>Boosting</h2>
+<p>Boosting algorithms are influenced by learning theory. Boosting algorithm seeks to improve the prediction power by training a sequence of weak models where each of them compensates the weaknesses of its predecessors. The trees in boosting are dependent on past trees, have minimum depth and do not contribute equally to the final model. It requires usto specify a weak model (e.g. regression, shallow decision trees etc) and then improves it.</p>
+<p>Similar to others, the train function can be used here too, to tune over different parameters. Here we define a tuning grid to tune over interaction depth, number of trees, and shrinkage. Next we train over this grid as follows.</p>
 <pre class="r"><code>set.seed(317)
 
 # boosting regression trees via stochastic gradient boosting machines
@@ -341,41 +347,6 @@ gbm.model</code></pre>
 ## RMSE was used to select the optimal model using the smallest value.
 ## The final values used for the model were n.trees = 200, interaction.depth =
 ##  2, shrinkage = 0.1 and n.minobsinnode = 5.</code></pre>
-</div>
-<div id="cubist" class="section level2">
-<h2>Cubist</h2>
-<pre class="r"><code>set.seed(317)
-
-cubist.model &lt;- train(x=trainingData$x, 
-                      y=trainingData$y, 
-                      method = &quot;cubist&quot;, 
-                      tuneLength = 5, 
-                      trControl = trainControl(method = &quot;cv&quot;))
-
-cubist.model</code></pre>
-<pre><code>## Cubist 
-## 
-## 200 samples
-##  10 predictor
-## 
-## No pre-processing
-## Resampling: Cross-Validated (10 fold) 
-## Summary of sample sizes: 180, 180, 180, 180, 180, 180, ... 
-## Resampling results across tuning parameters:
-## 
-##   committees  neighbors  RMSE      Rsquared   MAE     
-##    1          0          2.862530  0.6562333  2.107156
-##    1          5          2.612391  0.7113876  1.890289
-##    1          9          2.592513  0.7158471  1.882125
-##   10          0          1.763904  0.8675705  1.329510
-##   10          5          1.767245  0.8637853  1.354904
-##   10          9          1.718827  0.8735992  1.327531
-##   20          0          1.593833  0.8915076  1.209124
-##   20          5          1.624610  0.8858174  1.253957
-##   20          9          1.587134  0.8930052  1.221502
-## 
-## RMSE was used to select the optimal model using the smallest value.
-## The final values used for the model were committees = 20 and neighbors = 9.</code></pre>
 </div>
 </div>
 <div id="references" class="section level1">
