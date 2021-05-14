@@ -27,6 +27,7 @@ The terms Inference and Prediction are used extensively in data science communit
 ![Picture 1](https://raw.githubusercontent.com/amit-kapoor/data621/main/blog4/Inference.jpg)
 </center>
 
+
 As shown above, lets consider a given population and we use probability to sample from that population. Once we get that sample, we're going to try to say something (or infer) about this global population. In other words, given a set of data inference is how the output is generated as a function of the data.
 
 Lets consider a simple linear regression model
