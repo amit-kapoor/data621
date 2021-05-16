@@ -1,1 +1,224 @@
+---
+title: "Data621 - Blog5"
+author: "Amit Kapoor"
+date: "5/14/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    pandoc_args: ["--extract-media", "."]
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE, warning=FALSE, message=FALSE}
+
+library(dplyr)
+library(pls)
+library(glmnet)
+library(caret)
+
+data(mtcars)
+```
+
+
+
+# Linear Regression
+
+"In statistics, linear regression is a linear approach to modelling the relationship between a scalar response and one or more explanatory variables" - Wikipedia
+
+Linear regression does model the relationship between two variables by fitting a linear equation to observed data. The independent variable is considered to be an explanatory variable, and the response variable is considered to be a dependent variable. To start fitting a linear model to observed data, we should first determine if there is a relationship between the variables of interest and they are associated. We could find it through viasualizations like scatter plots between the dependent and predictor variables. 
+
+
+## Simple Linear Regression
+
+Lets consider the data collected in pairs ($x_1$,$y_1$), ($x_2$,$y_2$)…., ($x_n$,$y_n$) where X-variable is called explanatory or predictor variable while Y-variable is called response or dependent variable. Simple linear regression is used to model the relationship between two variables yi and xi that can be represented as
+
+$y_i$ = $\beta_0$ + $\beta_1$ $x_1$ + $\epsilon_i$
+
+The noise $\epsilon_i$ represents that model doesn't fit perfectly with the data, $\beta_0$ is intercept and $\beta_1$ is slope.
+
+There are four assumptions associated with a linear regression model:
+
+* Linearity: The relationship between X and Y is linear.
+* Homoscedasticity: The variance of residual is same for any value of X.
+* Independence: Observations are independent of each other.
+* Normality: For any fixed value of X, Y is normally distributed
+
+To compute linear regression, `lm` function is used to fit linear models. To look the model, we use `summary` function.
+
+We will use `mtcars` dataset to implement all the models, discussed in this blog. This dataset has below variables.
+
+* mpg	Miles/(US) gallon
+* cyl	Number of cylinders
+* disp	Displacement (cu.in.)
+* hp	Gross horsepower
+* drat	Rear axle ratio
+* wt	Weight (1000 lbs)
+* qsec	1/4 mile time
+* vs	Engine (0 = V-shaped, 1 = straight)
+* am	Transmission (0 = automatic, 1 = manual)
+* gear	Number of forward gears
+* carb	Number of carburetors
+
+```{r}
+set.seed(317)
+
+# linear model
+slr.tune <- lm(mpg ~ wt, data = mtcars)
+summary(slr.tune)
+```
+
+
+$R^2$ of above linear model is 0.75 which means model covers 75% variation of `mpg` is explained by `wt` in this model..
+
+
+## Multiple Linear Regression
+
+In this case, instead of just a single scalar value x, we have now a vector ($x_1$, $x_2$ ...... , $x_p$) for every data point i. Here we have n data points, each with p different features. We can represent our input data as X, an x x p matrix where each row corresponds to a data point and each column is a feature. So our linear model can be expressed
+
+Y = $\beta_1$ X + $\epsilon$
+
+where $\beta$ is a p element vector of coefficients and $\epsilon$ is an n element matrix where each element $\epsilon_i$ is normal with mean 0 and variance $\sigma^2$.
+
+To implement multiple linear regression, we would use again the same `lm` function with multiple predictors from `mtcars` dataset.
+
+```{r}
+set.seed(317)
+
+# multiple linear regression
+mlr.tune <- lm(mpg ~ wt+disp, data = mtcars)
+summary(mlr.tune)
+```
+
+
+
+# Partial Least Square
+
+Partial least squares (PLS) is an alternative to ordinary least squares (OLS) regression. It reduces the predictors to a smaller set of uncorrelated components and then performs least squares regression on these components, instead of on the original data. We can use PLS regression when the predictors (independent variables) are highly collinear, or when we have more predictors than observations and ordinary least-squares regression doesn't give the desired results. PLS finds linear combinations of the predictors called components. PLS finds components that attempts to maximally summarize the variation of the predictors while at the same time attempts these components to have maximum correlation with the response.
+
+The `pls` package has functions for PLS model. The `plsr` function implements Partial least squares Regression models.
+
+```{r}
+set.seed(317)
+
+# tune pls model 
+pls.tune <- plsr(mpg ~ disp+hp+drat+wt+qsec, data=mtcars)
+
+summary(pls.tune)
+```
+
+From the above summary, number of components considered are 5 and it shows the% variation explained.
+
+
+
+
+# Penalized Models
+
+The standard linear model (or the ordinary least squares method) performs poorly in a situation, where we have a large multivariate data set containing a number of variables more than the number of observations. A better alternative is the Penalized Regression allowing to create a linear regression model that is penalized for having too many variables in the model and it adds a constraint (coefficient) in the equation. It is also known as regularization methods.
+
+Adding the penalty allows the less contributive variables to have a coefficient close to or equal zero. This shrinkage requires the selection of a tuning parameter (lambda) that determines the amount of shrinkage.
+
+
+
+## Ridge
+
+Ridge regression shrinks the regression coefficients so predictor variables that contributes less to the outcome, have their coefficients close to zero. The shrinkage of the coefficients is achieved by penalizing the regression model with a penalty term called L2(second order penalty), which is the sum of the squared coefficients.
+
+
+When the model overfits the data or in case collinearity, we may need to control the magnitude of linear regression parameter estimates to reduce the SSE. Controlling (or regularizing) the parameter estimates can be achieved by adding a penalty to the SSE if the estimates become large. Ridge regression adds a penalty on the sum of the squared regression parameters:
+
+
+<center>
+![Picture 1](https://raw.githubusercontent.com/amit-kapoor/data621/main/blog5/blog5_1.jpg)
+</center>
+
+To tune over the penalty, `train` can be used with a `ridge` method.
+
+```{r}
+set.seed(317)
+
+y <- mtcars %>% select(mpg) %>% as.matrix()
+X <- mtcars %>% select(disp,hp,drat,wt,qsec) %>% as.matrix()
+
+# tune ridge model 
+ridge.fit <- train(mpg ~ .,
+                   data = cbind(y, X),
+                   method="ridge",
+                   metric="Rsquared",
+                   tuneGrid = data.frame(lambda=seq(0,1,by=0.1)),
+                   trControl=trainControl(method = "cv",number=5),
+                   preProcess=c("center", "scale")
+                 )
+
+ridge.fit
+```
+
+
+## Lasso
+
+Lasso stands for "Least Absolute Shrinkage and Selection Operator". It shrinks the regression coefficients toward zero by penalizing the regression model with a penalty term called L1, which is the sum of the absolute coefficients. In the case of lasso regression, the penalty has the effect of forcing some of the coefficient estimates having minor contribution to the model, to be exactly equal to zero. Lasso regression adds a penalty on the sum of absolute regression parameters.
+
+<center>
+![Picture 1](https://raw.githubusercontent.com/amit-kapoor/data621/main/blog5/blog5_2.jpg)
+</center>
+
+
+To tune over the penalty, `train` can be used with a `lasso` method.
+
+```{r lasso, warning=FALSE}
+set.seed(317)
+# tune lasso model 
+lasso.fit <- train(mpg ~ .,
+                   data = cbind(y, X),
+                   method="lasso",
+                   metric="Rsquared",
+                   tuneGrid = data.frame(fraction=seq(0,1,by=0.1)),
+                   trControl=trainControl(method = "cv",number=5),
+                   preProcess=c("center", "scale")
+                 )
+
+lasso.fit
+```
+
+
+
+## Elastic Net
+
+Elastic Net produces a regression model that is penalized with both the L1-norm and L2-norm. The consequence of this is to effectively shrink coefficients (like in ridge regression) and to set some coefficients to zero (as in LASSO). The main advantage of elastic net model is that it enables effective regularization by having the ridge-type penalty along with the feature selection quality of the lasso penalty.
+
+<center>
+![Picture 1](https://raw.githubusercontent.com/amit-kapoor/data621/main/blog5/blog5_3.jpg)
+</center>
+
+
+The `elastic net` penalty is controlled by $\alpha$ and bridges the gap between `lasso` regression ($\alpha$=1), the default) and `ridge` regression ($\alpha$=0)
+
+
+```{r elas-net, warning=FALSE}
+set.seed(317)
+# tune enet model 
+enet.fit <- train(mpg ~ .,
+                  data = cbind(y, X),
+                  method="enet",
+                  metric="Rsquared",
+                  tuneGrid = expand.grid(fraction=seq(0,1,by=0.5), lambda=seq(0,1,by=0.1)),
+                  trControl=trainControl(method = "cv",number=5),
+                  preProcess=c("center", "scale")
+                 )
+
+enet.fit
+```
+
+
+# References
+
+* Applied Predictive Modeling by Max Kuhn and Kjell Johnson
+* https://glmnet.stanford.edu/articles/glmnet.html
+
+
+
 
