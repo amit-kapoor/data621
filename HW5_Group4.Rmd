@@ -1,0 +1,390 @@
+---
+title: "Data 621 - HW5"
+author: "Devin Teran, Atina Karim, Tom Hill, Amit Kapoor"
+date: "5/23/2021"
+output:
+  pdf_document:
+    toc: TRUE
+    toc_depth: 2 
+  html_document:
+    highlight: pygments
+    number_sections: no
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE, fig.align = "center")
+```
+
+
+```{r loadData, include=FALSE}
+# Libraries
+
+
+library(DataExplorer)
+library(visdat)
+library(dplyr)
+library(tidyr)
+library(MASS)
+library(psych)
+library(AER)
+library(mlr)
+library(mice)
+library(imputeTS)
+
+set.seed(621)
+```
+
+
+```{r data}
+# training data
+wine_train <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW5/wine-training-data.csv') %>% 
+  dplyr::select(-1)
+
+# test data
+wine_test <- read.csv('https://raw.githubusercontent.com/hillt5/DATA_621/master/HW5/wine-evaluation-data.csv') %>% 
+  dplyr::select(-1)
+```
+
+
+
+# Overview
+
+In this assignment, we will explore, analyze and model a data set containing information on approximately 12,000 commercially available wines. The variables are mostly related to the chemical properties of the wine being sold. The response variable is the number of sample cases of wine that were purchased by wine distribution companies after sampling a wine. These cases would be used to provide tasting samples to restaurants and wine stores around the United States. The more sample cases purchased, the more likely is a wine to be sold at a high end restaurant. A large wine manufacturer is studying the data in order to predict the number of wine cases ordered based upon the wine characteristics. If the wine manufacturer can predict the number of cases, then that manufacturer will be able to adjust their wine offering to maximize sales. 
+
+The objective is to build a count regression model to predict the number of cases of wine that will be sold given certain properties of the wine.
+
+
+# Data Exploration
+
+Below is the description of the variables of interest in the data set.
+
+|VARIABLE NAME|DEFINITION|THEORETICAL EFFECT|
+|--|----|---|
+|TARGET|Number of Cases Purchased|None|
+|AcidIndex|Proprietary method of testing total acidity of wine by using a weighted average||
+|Alcohol|Alcohol Content||
+|Chlorides|Chloride content of wine||
+|CitricAcid|Citric Acid Content||
+|Density|Density of Wine||
+|FixedAcidity|Fixed Acidity of Wine||
+|FreeSulfurDioxide|Sulfur Dioxide content of wine||
+|LabelAppeal|Marketing Score indicating the appeal of label design for consumers. High numbers suggest customers like the label design. Negative numbers suggest customers don't like the design.|Many consumers purchase based on the visual appeal of the wine label design. Higher numbers suggest better sales.|
+|ResidualSugar|Residual Sugar of wine||
+|STARS|Wine rating by a team of experts. 4 Stars = Excellent, 1 Star = Poor|A high number of stars suggests high sales|
+|Sulphates|Sulfate content of wine||
+|TotalSulfurDioxide|Total Sulfur Dioxide of Wine||
+|VolatileAcidity|Volatile Acid content of wine||
+|pH|pH of wine|| 
+
+
+## Statistics
+
+All of the data are numeric and here is the statistics summary of all the predictors.
+
+```{r, describe}
+wine_train %>% dplyr::select(-1) %>% describe()
+```
+
+## Numeric Variables
+
+Seeing the distribution plots below of all the predictor variables, it is evident that variables Alcohol, Chlorides, CitricAcid, Density, FixedAcidity, FreeSulphurDioxide, pH, ResidualSugar, Sulphates, TotalSulphurDioxide and VolatileAcidity appear to be symmetrical but non Gaussian since there is a strong spike near the median and not smooth near the tails on either side. 
+
+LabelAppeal distribution appears mostly normal while for AcidIndex and STARS seems to follow Poisson distribution.
+
+```{r, histograms}
+plot_histogram(wine_train[-1], geom_histogram_args = list("fill" = "tomato4"))
+```
+
+
+```{r, distinct-values}
+tibble(wine_train %>% summarize_all(n_distinct))
+```
+
+
+All variables in this dataset are initially interpretable as numeric data. There are several variables, including AcidIndex, LabelAppeal, and STARS that have few distinct values and may be treated as factors in the future. The target variable, number of cases, also only spans values 0 - 8.  
+
+
+## Correlations
+
+The `corrplot` below shows the correlation between predictor variables by ignoring the missing entries.
+
+```{r, corrplot}
+forcorr <- wine_train[complete.cases(wine_train),-1]
+corrplot::corrplot(cor(forcorr), type = 'lower')
+```
+
+From the above `corrplot`, it is apparent that 
+
+* `AcidIndex` and `FixedAcidity` are positively correlated. 
+* `STARS` and `LabelAppeal` are positively correlated. 
+* `STARS` and `AcidIndex` are negatively correlated.
+
+
+
+
+
+
+
+
+## Missing Values
+
+
+```{r, missing-values}
+
+
+colSums(is.na(wine_train))
+
+
+vis_dat(wine_train  %>% dplyr:: select(pH, ResidualSugar, Chlorides, Alcohol, FreeSulfurDioxide , TotalSulfurDioxide, Sulphates, STARS))
+
+
+```
+
+The feature with the most misisng variables is STARS, which is a rating between 1-4. It's plausible that the missing values in this case are wine brands that are unrated by STARS.  These missing values can potentially be recoded as 'zero' to avoid dropping a substantial proportion of data.   There also does not appear to be any apparent pattern in misisng data.  
+
+
+
+````{r, pct-missing-values}
+
+plot_missing(wine_train)
+
+
+100*round((wine_train %>% drop_na() %>% nrow())/nrow(wine_train), 3) ##Number of observations with complete data for each variable
+
+```
+
+The remaining missing values comprise less than ten percent of observations separately. Taken together, just over 50% of observations have complete data available.  
+
+# Data Preparation
+
+## Missing Values
+
+We will recode missing values in the predictor STARS as 0.
+
+```{r, STARS-missing-values}
+wine_train1 <- wine_train %>%
+  mutate(STARS = replace_na(STARS, 0))  ## Recode missing STARS ratings as '0'
+
+```
+
+However, since our ratings range from 1 to 4, we will also impute this variable with the median. 
+
+```{r, impute-median}
+
+#wine_impute <- mlr:: impute(wine_train, classes = list(numeric = mlr::imputeMedian()))
+wine_impute <- imputeTS ::na_mean(wine_train, option = "median")
+```
+
+However, imputing with measures of central tendency is that they tend to reduce the variance in the dataset and shrinks standard errors Therefore, our third method of dealing with missing values would be multiple imputation. We will use the MICE package in R to impute via the random forest method.
+
+```{r, multiple-imputation}
+imp <- mice:: mice(wine_train, method = "rf", m = 1)
+# Store data
+data_imp <- complete(imp)
+```  
+  
+Finally, we will create a data set to impute missing values with the median after we recode missing values in the predictor STARS as 0.
+```{r STARS-missing-values-impute-median}
+wine_train1_imputed_median <- wine_train1
+wine_train1_imputed_median <- imputeTS ::na_mean(wine_train1_imputed_median, option = "median")
+
+```
+# Build Models
+
+
+## Multiple Linear Regression : Model 1
+
+We will first run linear regression with all predictor variables in our dataset.
+
+```{r, first-model}
+
+summary(lm(wine_train, formula = TARGET ~.))
+
+```
+The adjusted r^2 is 0.4438 and is significant.
+
+## Multiple Linear Regression : Model 2
+
+We will now run linear regression with all predictor variables on our dataset with missing values in STARS recoded as 0.
+
+```{r, second-model}
+model2<- lm(wine_train1, formula = TARGET ~.)
+summary(model2)
+
+```
+
+The adjusted r^2 has gone up to 0.5186 and this is significant. 
+
+## Multiple Linear Regression : Model 3
+
+We will run the linear regression model on our dataset with the imputed median.
+
+```{r,third-model}
+
+summary(lm(wine_impute, formula = TARGET ~ .))
+
+```
+Seems like this decreased out adjusted r^2 to 0.2871.
+
+## Multiple Linear Regression : Model 4
+
+Now we will run the linear regression model on our dataset with the data from MICE.
+
+```{r,fourth-model}
+summary(lm(data_imp, formula = TARGET ~.))
+```
+Looks like this has brought down our adjusted r^2 to 0.4443. Therefore, it seems like in this case the best model fit was achieved with the dataset where we recoded the missing values as 0 and used all the variables.
+
+Before moving on let's try removing some of the variables to see if we can get a simpler model.  
+
+## Multiple Linear Regression : Model 5
+We removed some of the parameters that aren't statistically significant from model2 which so far has the highest adjusted r^2 value.  We also chose to remove some variables that were statistically significant (Chlorides,TotalSulfurDioxide,FreeSulfurDioxide and VolatileAcidity) but the coefficients of the model were so small they had little impact.  In favor of a simpler model with fewer parameters, these were removed.
+```{r,fifth-model}
+model5 <- lm(wine_train1, formula = TARGET ~ LabelAppeal + AcidIndex + STARS)
+summary(model5)
+
+```
+The adjusted r^2 to value is slightly higher at 0.5235
+
+Let's check the model fit for this model with diagnostic plots:
+
+```{r, diagnostic-model5}
+library(ggplot2)
+res0 <- resid(model5)
+plot(density(res0))
+qqnorm(res0)
+qqline(res0)
+```
+The density and qq plot for this model indicates that the residuals are normally distributed.
+
+While this model maybe an adequate fit, we are going to develop Poisson Regression models next to see if we can get a better fit.
+
+## Poisson Regression STARS = 1 Where Missing: Model 1
+First let us use our dataset where we recoded missing values in the predictor STARS as 0.
+```{r, poisson-model1}
+poisson1 <- glm(wine_train1, formula = TARGET ~., family = poisson)
+summary(poisson1)
+
+```
+
+We see that the residual deviance is 9962 on 8660 degrees of freedom. Ideally the ratio of deviance to df should be 1. Otherwise there is overdispersion in the model.
+
+
+```{r,overdisp1}
+dispersiontest(poisson1)
+```
+There is no indication of overdispersion in our data.
+
+## Poisson Regression STARS = 1 Where Missing: Model 2
+Our next poisson model, we will use the limited variables we found to be relevant in our linear model.  Again we are using the dataset where we recoded missing values in the predictor STARS as 0.
+```{r, poisson-model-2}
+poisson2 <- glm(wine_train1, formula = TARGET ~ STARS + LabelAppeal + AcidIndex, family = poisson)
+summary(poisson2)
+
+```
+ 
+We see that the residual deviance is 22861 on 12794 degrees of freedom. Ideally the ratio of deviance to df should be 1. Otherwise there is overdispersion in the model.
+
+```{r,overdisp2}
+dispersiontest(poisson2)
+```
+
+There is no indication of overdispersion in our data.  
+
+## Negative Binomial: Model1
+```{r, negative-binom-model}
+nb1 <- glm.nb(wine_train1, formula = TARGET ~. )
+summary(nb1)
+
+```
+Here our output from our first poisson model is exactly the same as our first negative binomial model. 
+
+
+
+## Negative Binomial: Model2
+For our second negative binomial we are going to use the function **stepAIC()** to complete forward selection to see how it compares to our other models.  We don't want to use the limited set of variables (STARS,LabelAppeal, and AcidIndex) as we've done before because we know that the model output would match our second Poisson model exactly.
+
+The stepAIC cannot handle NA values so we are going to use our wine_train1_imputed_median, which has used the median of the data column for missing data points after setting missing STARS values equal to 0.  
+```{r, negative-binom-model-2}
+nb2 <- glm.nb(wine_train1_imputed_median, formula = TARGET ~ .)
+
+stepmodel <- stepAIC(nb2,selection='forward')
+
+```
+
+
+
+# Select Models
+
+### Best Linear Model
+The best linear model was chosen based on adjusted R^2 value, ~52.4%, and the least number of variables.  It accounts for the most variance in our data.  The STARS value has the highest impact on the score of a wine.  We will compare this model to our poisson and negative binomial models below.  
+```{r, best-model}
+coefficients(model5)
+```
+
+### Comparing Models
+We're going to use AIC and MSE values to choose the best model
+```{r aic-mse-comparison}
+library(dvmisc)
+library(kableExtra)
+
+lm5 <- c('Fewer variables and missing STARS variables recoded as 0',AIC(model5),mean(model5$residuals^2))
+p1 <- c('STARS = 0 where missing',poisson1$aic,mean(poisson1$residuals^2))
+p2 <- c('STARS = 0 where missing with fewer variables',poisson2$aic,get_mse(poisson2))
+nb1 <- c('STARS = 0 where missing',31708,mean(nb1$residuals^2))
+nb2 <- c('STARS = 0 where missing with fewer variables',AIC(stepmodel),mean(stepmodel$residuals^2))
+
+results <- cbind(lm5,p1,p2,nb1,nb2)
+
+colnames(results) <- c('Linear Model #5', 'Poisson #1', 'Poisson #2','Negative Binomial #1', 'Negative Binomial #2')
+rownames(results) <- c('Description','AIC','MSE')
+
+results %>%
+  kable() %>%
+  kable_styling()
+
+```
+Here we see our Poisson #1 is the best model because it has the lowest AIC and MSE.  Our first negative binomial model is the same but we'll choose to use our poisson model moving forward.    
+
+### Prediction on the Test Data  
+The coefficients of our best model are:  
+```{r best-coeff}
+poisson1$coefficients
+```
+
+Now we will use our poisson model to run our test data.  
+```{r, predict-test-data}
+wine_test1 <-  wine_test %>%
+  mutate(STARS = replace_na(STARS, 0)) 
+wine_test1 <- subset(wine_test1,select = -c(TARGET))
+predictions <- predict(poisson1,wine_test1)
+print("The top 6 predictions are:")
+head(predictions)
+```
+
+
+
+# Code Appendix
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
